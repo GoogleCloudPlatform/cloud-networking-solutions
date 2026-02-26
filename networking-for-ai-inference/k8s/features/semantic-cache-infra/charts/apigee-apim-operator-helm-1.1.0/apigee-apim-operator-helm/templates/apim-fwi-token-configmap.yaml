@@ -1,0 +1,9 @@
+{{- if .Values.federatedWorkloadIdentity.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: gcp-token-config
+  namespace: apim
+data:
+  config: |-{{ required ".Values.federatedWorkloadIdentity.credentialSourceFileContent is required!!" .Values.federatedWorkloadIdentity.credentialSourceFileContent | nindent 4 }}
+{{- end }}

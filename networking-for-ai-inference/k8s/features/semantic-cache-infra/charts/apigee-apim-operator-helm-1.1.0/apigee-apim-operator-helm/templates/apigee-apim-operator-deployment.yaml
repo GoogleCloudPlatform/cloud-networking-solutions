@@ -1,0 +1,119 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: apigee-apim-operator
+    provider: jkube
+    version: 1.0.0
+    group: com.apigee
+  name: apigee-apim-operator
+  namespace: apim
+spec:
+  replicas: 1
+  revisionHistoryLimit: 2
+  selector:
+    matchLabels:
+      app: apigee-apim-operator
+      provider: jkube
+      group: com.apigee
+  template:
+    metadata:
+      labels:
+        app: apigee-apim-operator
+        provider: jkube
+        version: 1.0.0
+        group: com.apigee
+      namespace: apim
+    spec:
+      containers:
+      - env:
+        - name: CONTROLLER_LOG_FORMATTER
+          value: {{ default "com.apigee.logging.JsonLogFormatter" .Values.log_formatter | quote }}
+        - name: CONTROLLER_LOGLEVEL
+          value: {{ default "INFO" .Values.log_level | quote }}
+        - name: CONTROLLER_ROOTLOGGER
+          value: {{ default "" .Values.root_logger | quote }}
+        - name: ORG_NAME
+          value: {{ required "Error: Supply your apigee org name with '--set apigeeOrg=...'" .Values.apigeeOrg | quote }}
+        - name: GENERATE_ENV
+          value: {{ default "FALSE" .Values.generateEnv | quote }}
+        - name: APIGEE_MGMT_DNS
+          value: {{ default "apigee.googleapis.com" .Values.apigeeMgmtUrl | quote }}
+        - name: KUBERNETES_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        - name: JAVA_OPTIONS
+          value: -Xms128m -Xmx1024m
+        - name: HOSTNAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        {{- if .Values.projectId }}
+        - name: PROJECT_ID
+          value: {{ .Values.projectId }}
+        {{- end }}
+        {{- if .Values.federatedWorkloadIdentity.enabled }}
+        - name: GOOGLE_APPLICATION_CREDENTIALS
+          value: /gcp/config
+        {{- else if .Values.serviceAccountKeyFileContent }}
+        - name: GOOGLE_APPLICATION_CREDENTIALS
+          value: /etc/secret/client_secret.json
+        {{- end }}
+        image: {{ .Values.controller.image }}
+        imagePullPolicy: {{ .Values.controller.imagePullPolicy }}
+        name: apigee-release-apigee-apim-operator
+        ports:
+        - containerPort: 8843
+          protocol: TCP
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+          privileged: false
+        volumeMounts:
+        - mountPath: /tmp
+          name: appsfs
+        {{- if .Values.serviceAccountKeyFileContent }}
+        - mountPath: /etc/secret
+          name: svc-account-volume
+          readOnly: true
+        {{- end }}
+        {{- if .Values.federatedWorkloadIdentity.enabled }}
+        - name: gcp-sa-credential
+          mountPath: "/gcp"
+          readOnly: true
+        - name: gcp-ksa-token
+          mountPath: /var/run/secrets/tokens
+          readOnly: true
+        {{- end }}
+      securityContext:
+        runAsGroup: 998
+        runAsNonRoot: true
+        runAsUser: 999
+      serviceAccountName: apim-ksa
+      volumes:
+      {{- if .Values.federatedWorkloadIdentity.enabled }}
+      - name: gcp-sa-credential
+        configMap:
+          name: gcp-token-config
+      - name: gcp-ksa-token
+        projected:
+          sources:
+          - serviceAccountToken:
+              path: gcp-token
+              audience: {{ .Values.federatedWorkloadIdentity.audience }}
+              expirationSeconds: {{ .Values.federatedWorkloadIdentity.tokenExpiration }}
+      {{- end }}
+      - emptyDir: {}
+        name: appsfs
+      {{- if .Values.serviceAccountKeyFileContent }}
+      - name: svc-account-volume
+        secret:
+          defaultMode: 420
+          secretName: apigee-apim-svc-account
+          optional: true
+      {{- end }}
+      imagePullSecrets: {{ include "prettifyToYaml" (dict "e" .Values.imagePullSecrets "n" 6) }}

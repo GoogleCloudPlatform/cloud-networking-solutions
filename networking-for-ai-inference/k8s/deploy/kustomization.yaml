@@ -1,0 +1,27 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Inference Gateway - Main Deployment
+#
+# Deploys the Gateway API resources and all configured models.
+# Each model is deployed with its own InferencePool, EPP, and supporting resources.
+#
+# To add a new model:
+# 1. Create a new overlay in ../models/<model-name>/
+# 2. Add the model path to the resources list below
+# 3. Add HTTPRoute rules for the new model in gateway/routes.yaml
+#
+# Usage: kubectl apply -k kubernetes/inference-gateway
+
+namespace: default
+
+resources:
+    # Gateway resources (shared across all models)
+    - gateway/gateway.yaml
+    - gateway/routes.yaml
+
+    # Models - add new models here
+    # Each model overlay creates its own set of resources with unique names
+    - ../models/gemma-3-27b-it
+    # Uncomment to deploy additional models:
+    # - ../models/llama-3-8b

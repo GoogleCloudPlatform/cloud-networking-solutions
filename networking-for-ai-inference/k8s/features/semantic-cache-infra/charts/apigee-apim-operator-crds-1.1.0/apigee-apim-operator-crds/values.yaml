@@ -1,0 +1,2 @@
+# Empty values file - required by kustomize helm integration
+# This chart (apigee-apim-operator-crds) is a CRD-only chart with no configurable values

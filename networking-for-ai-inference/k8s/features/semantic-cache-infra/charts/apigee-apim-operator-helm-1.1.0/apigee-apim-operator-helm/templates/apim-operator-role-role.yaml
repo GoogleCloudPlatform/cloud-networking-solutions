@@ -1,0 +1,21 @@
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  labels:
+    app: apigee-apim-operator
+    provider: jkube
+    version: 1.0.0
+    group: com.apigee
+  name: apim-operator-role
+  namespace: apim
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - configmaps
+  - secrets
+  verbs:
+  - get
+  - list
+  - watch

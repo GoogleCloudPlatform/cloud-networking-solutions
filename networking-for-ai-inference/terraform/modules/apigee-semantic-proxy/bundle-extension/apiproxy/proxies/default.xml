@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<ProxyEndpoint name="default">
+  <Description>Semantic cache proxy endpoint for Service Extension (no target)</Description>
+  <FaultRules/>
+  <PreFlow name="PreFlow">
+    <Request>
+      <!-- Step 0: Debug - Extract body content to verify body is available -->
+      <Step>
+        <Name>EV-Extract-Body-Debug</Name>
+      </Step>
+      <!-- Step 1: Perform semantic cache lookup -->
+      <Step>
+        <Name>SCL-Semantic-Cache-Lookup</Name>
+      </Step>
+      <!-- Step 2: If cache hit, return cached response immediately -->
+      <Step>
+        <Name>RF-Return-Cached-Response</Name>
+        <Condition>semanticcache.SCL-Semantic-Cache-Lookup.cachehit = true</Condition>
+      </Step>
+    </Request>
+    <Response>
+      <!-- Add debug headers to track cache behavior -->
+      <Step>
+        <Name>AM-Set-Cache-Headers</Name>
+      </Step>
+      <!-- Populate cache on response - always attempt, policy handles cache-hit internally -->
+      <Step>
+        <Name>SCP-Semantic-Cache-Populate</Name>
+      </Step>
+    </Response>
+  </PreFlow>
+  <PostFlow name="PostFlow">
+    <Request/>
+    <Response/>
+  </PostFlow>
+  <Flows/>
+  <HTTPProxyConnection>
+    <BasePath>/cache-processor</BasePath>
+    <Properties>
+      <!-- Streaming DISABLED: Traffic Extension now handles streaming via BODY_SEND_MODE_FULL_DUPLEX_STREAMED -->
+      <!-- This allows SemanticCacheLookup to access request body for prompt extraction -->
+      <Property name="request.streaming.enabled">false</Property>
+      <Property name="response.streaming.enabled">false</Property>
+    </Properties>
+  </HTTPProxyConnection>
+  <!-- No target - returns to ALB which forwards to backend -->
+  <RouteRule name="no-target"/>
+</ProxyEndpoint>

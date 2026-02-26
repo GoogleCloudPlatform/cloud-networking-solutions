@@ -1,0 +1,21 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Inference Cluster - CRD Installation
+#
+# Installs Gateway API Inference Extension CRDs:
+# - InferencePool (inference.networking.k8s.io/v1)
+# - InferenceObjective (inference.networking.x-k8s.io/v1alpha2)
+#
+# Note: For GKE 1.34.0-gke.1626000+, InferencePool CRD is pre-installed.
+#       Only InferenceObjective needs explicit installation.
+#
+# Usage: kubectl apply -k kubernetes/inference/crds
+#
+# Alternative direct installation:
+#   kubectl apply -f https://github.com/kubernetes-sigs/gateway-api-inference-extension/releases/download/v1.3.0/manifests.yaml
+
+resources:
+    # Remote reference to official CRDs
+    # Using v1.2.1 release for stability
+    - https://github.com/kubernetes-sigs/gateway-api-inference-extension/releases/download/v1.3.0/manifests.yaml

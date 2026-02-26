@@ -1,0 +1,119 @@
+# DIY Inference Gateway configuration template
+#
+# Generate a tfvars file using envsubst:
+#   export PROJECT_ID=my-project REGION=us-east4 DOMAIN_NAME=example.gcp.company.com ...
+#   envsubst '$PROJECT_ID $REGION $DOMAIN_NAME $DNS_ZONE_NAME $HUGGINGFACE_TOKEN $ENABLE_HF $ENABLE_MODEL_ARMOR $MODEL_NAMESPACES_TF' \
+#     < diy-gateway.tfvars.tmpl > diy-gateway.tfvars
+#
+# Required environment variables:
+#   PROJECT_ID          - GCP project ID (e.g., my-project-12345)
+#   REGION              - GCP region (e.g., us-east4)
+#   DOMAIN_NAME         - Base domain without trailing dot (e.g., example.gcp.company.com)
+#   DNS_ZONE_NAME       - Cloud DNS zone name
+#   HUGGINGFACE_TOKEN   - HuggingFace API token (or "null" if not set)
+#   ENABLE_HF           - Whether HF token is enabled ("true"/"false")
+#   ENABLE_MODEL_ARMOR  - Whether Model Armor is enabled ("true"/"false")
+#   MODEL_NAMESPACES_TF - Terraform list of model namespaces (e.g., ["gemma-3-27b-it"])
+
+project_id = "${PROJECT_ID}"
+region     = "${REGION}"
+
+name_prefix = "igw"
+
+# DNS Configuration
+dns_zone_domain            = "${DOMAIN_NAME}."
+dns_zone_name              = "${DNS_ZONE_NAME}"
+enable_certificate_manager = true
+
+# Networking Configuration
+gateway_scope = "regional"
+
+# GKE Clusters Configuration
+clusters = {
+  inference-cluster = {
+    dns_domain          = "inference"
+    deletion_protection = false
+    secret_sync_config = {
+      enabled = true
+    }
+  }
+}
+
+# Enable security features
+enable_model_armor = ${ENABLE_MODEL_ARMOR}
+
+# Apigee Configuration
+apigee_envgroups = {
+  prod = ["api.internal.${DOMAIN_NAME}"]
+}
+
+# DIY Inference Gateway (Self-managed Regional Internal ALB)
+#
+# Terraform pre-creates empty zonal GKE NEGs. The GKE NEG controller adopts
+# these NEGs and populates endpoints as pods come up. This eliminates the
+# two-phase NEG discovery loop that was previously required.
+self_managed_gateway = {
+  name_prefix = "diy-igw"
+  domain = {
+    name         = "diy.internal.${DOMAIN_NAME}"
+    enable_https = true
+  }
+  load_balancer = {
+    enable_static_ip = true
+  }
+  backends = {
+    default = "vertex-ai"
+    services = {
+      "vertex-ai" = {
+        internet_fqdn  = "${REGION}-aiplatform.googleapis.com"
+        internet_port  = 443
+        protocol       = "HTTPS"
+        balancing_mode = "UTILIZATION"
+      }
+      "gemma-3-27b-it" = {
+        gke_neg = {
+          name  = "gemma-3-27b-it-neg"
+          zones = ["${REGION}-a", "${REGION}-b", "${REGION}-c"]
+        }
+        protocol     = "HTTP"
+        health_check = { port = 8000, path = "/health" }
+      }
+    }
+  }
+  routing = {
+    model_rules = [
+      {
+        priority     = 10
+        backend      = "vertex-ai"
+        model_prefix = "google/gemini"
+        url_rewrite = {
+          host_rewrite        = "${REGION}-aiplatform.googleapis.com"
+          path_prefix_rewrite = "/v1beta1/projects/${PROJECT_ID}/locations/${REGION}/endpoints/openapi/"
+        }
+      },
+      { priority = 20, backend = "gemma-3-27b-it", model_prefix = "google/gemma" },
+    ]
+    path_rules = [
+      { priority = 6, backend = "gemma-3-27b-it", path_match = "/security/", url_rewrite = { path_prefix_rewrite = "/" } },
+    ]
+  }
+  body_based_routing = {
+    enabled = true
+    ext_proc = {
+      image = "${REGION}-docker.pkg.dev/${PROJECT_ID}/images/bbr-ext-proc:latest"
+    }
+  }
+  security = {
+    model_armor = {
+      enabled          = true
+      protected_models = ["google/gemma-3-27b-it"]
+      paths            = ["/security/"]
+    }
+  }
+}
+
+# Disable GKE Gateway for this configuration
+gke_gateway = null
+
+huggingface_token        = ${HUGGINGFACE_TOKEN}
+model_namespaces         = ${MODEL_NAMESPACES_TF}

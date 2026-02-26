@@ -1,0 +1,40 @@
+# ApigeeBackendService - Core connection between GKE Gateway and Apigee
+#
+# =============================================================================
+# CONFIGURATION NOTES
+# =============================================================================
+# IMPORTANT: The ApigeeBackendService name must NOT match the Apigee proxy name.
+# The APIM operator auto-creates a proxy with the same name as this resource,
+# which would conflict with the Terraform-deployed 'cache-extension' proxy.
+#
+# Fields replaced via kustomize (from apim-global-config):
+#   - spec.apigeeEnv -> APIGEE_ENV
+#   - spec.locations[0].name -> us-east4
+#   - spec.locations[0].network -> VPC_NETWORK
+#   - spec.locations[0].subnetwork -> VPC_SUBNET
+# =============================================================================
+apiVersion: apim.googleapis.com/v1
+kind: ApigeeBackendService
+metadata:
+    name: apigee-cache-backend
+    namespace: default
+    labels:
+        app.kubernetes.io/name: unified-inference-gateway
+        app.kubernetes.io/component: apigee-backend
+        app.kubernetes.io/part-of: apim
+spec:
+    # Apigee Environment to use for API proxy execution
+    # Replaced via kustomize: APIGEE_ENV
+    apigeeEnv: "apis-prod"
+
+    # Disable default security to allow custom auth handling
+    # Set to true if you want Apigee to enforce API key validation
+    defaultSecurityEnabled: false
+
+    # Network configuration matching GKE cluster's VPC
+    # This enables the Apigee APIM operator to configure proper connectivity
+    locations:
+        # Replaced via kustomize: us-east4, VPC_NETWORK, VPC_SUBNET
+        - name: "us-east4"
+          network: "projects/PLACEHOLDER_PROJECT_ID/global/networks/ai-gateway-vpc"
+          subnetwork: "projects/PLACEHOLDER_PROJECT_ID/regions/us-east4/subnetworks/ai-gateway-subnet"

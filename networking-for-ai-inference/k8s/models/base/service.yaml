@@ -1,0 +1,40 @@
+apiVersion: v1
+kind: Service
+metadata:
+    name: llm-service
+    annotations:
+        cloud.google.com/neg: '{"exposed_ports": {"8000":{"name": "base-model-neg"}}}'
+    labels:
+        app.kubernetes.io/name: vllm-server
+        app.kubernetes.io/component: inference-server
+spec:
+    selector:
+        app: vllm-server
+    type: ClusterIP
+    ports:
+        - name: http
+          protocol: TCP
+          port: 8000
+          targetPort: 8000
+---
+# Health check policy for service
+apiVersion: networking.gke.io/v1
+kind: HealthCheckPolicy
+metadata:
+    name: llm-service-healthcheck
+    labels:
+        app.kubernetes.io/name: vllm-server
+        app.kubernetes.io/component: inference-server
+spec:
+    targetRef:
+        group: ""
+        kind: Service
+        name: llm-service
+    default:
+        timeoutSec: 5
+        checkIntervalSec: 5
+        config:
+            type: HTTP
+            httpHealthCheck:
+                requestPath: /health
+                port: 8000

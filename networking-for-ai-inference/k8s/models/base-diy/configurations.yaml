@@ -1,0 +1,16 @@
+nameReference:
+- kind: SecretProviderClass
+  fieldSpecs:
+  - path: spec/secretProviderClassName
+    kind: SecretSync
+- kind: ConfigMap
+  fieldSpecs:
+  - path: replacements/source/name
+- kind: SecretSync
+  fieldSpecs:
+  - path: spec/template/spec/containers/env/valueFrom/secretKeyRef/name
+    kind: Deployment
+- kind: Service
+  fieldSpecs:
+  - path: spec/targetRef/name
+    kind: HealthCheckPolicy

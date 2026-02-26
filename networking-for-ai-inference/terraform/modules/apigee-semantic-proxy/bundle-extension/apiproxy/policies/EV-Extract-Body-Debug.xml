@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<ExtractVariables async="false" continueOnError="true" enabled="true" name="EV-Extract-Body-Debug">
+  <DisplayName>Extract Body Debug</DisplayName>
+  <Source>request</Source>
+  <JSONPayload>
+    <Variable name="debug.messages" type="string">
+      <JSONPath>$.messages[0].content</JSONPath>
+    </Variable>
+    <Variable name="debug.body_present" type="string">
+      <JSONPath>$.model</JSONPath>
+    </Variable>
+  </JSONPayload>
+  <VariablePrefix>extracted</VariablePrefix>
+</ExtractVariables>

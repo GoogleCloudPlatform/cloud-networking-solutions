@@ -1,0 +1,41 @@
+# Terraform
+*.tfvars
+*.tfvars.json
+**/.terraform/
+*.tfstate
+*.tfstate.backup
+*.tfstate.*.backup
+crash.log
+crash.*.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+*.tfplan
+
+# Go
+bin/
+vendor/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Editor / IDE
+*.swp
+*.swo
+*~
+.vscode/
+.idea/
+*.iml
+
+# Environment / secrets
+.env
+.env.*
+.envrc
+
+# Pre-commit
+.pre-commit-cache/
+
+# Direnv
+.direnv/

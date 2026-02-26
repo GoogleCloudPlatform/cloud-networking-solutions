@@ -1,0 +1,41 @@
+# GCPTrafficExtension for Apigee Semantic Cache
+apiVersion: networking.gke.io/v1
+kind: GCPTrafficExtension
+metadata:
+    name: semantic-cache-extension
+    namespace: inference-gateway
+spec:
+    targetRefs:
+        - group: "gateway.networking.k8s.io"
+          kind: Gateway
+          name: unified-inference-gateway
+    extensionChains:
+        - name: chain-semantic-cache
+          matchCondition:
+              celExpressions:
+                  - celMatcher: request.path.startsWith("/cache/")
+          extensions:
+              - name: extension-apigee-cache
+                metadata:
+                    # Replaced at build time by kustomize replacements
+                    # (see kustomization.yaml) using SEMANTIC_PROXY_NAME
+                    # from the gateway-env-config ConfigMap.
+                    apigee-extension-processor: PLACEHOLDER
+                    apigee-request-body: "true"
+                    apigee-response-body: "true"
+                failOpen: false
+                timeout: 10s
+                requestBodySendMode: FullDuplexStreamed
+                responseBodySendMode: FullDuplexStreamed
+                supportedEvents:
+                    - RequestHeaders
+                    - RequestBody
+                    - RequestTrailers
+                    - ResponseHeaders
+                    - ResponseBody
+                    - ResponseTrailers
+                backendRef:
+                    group: apim.googleapis.com
+                    kind: ApigeeBackendService
+                    name: apigee-cache-backend
+                    port: 443

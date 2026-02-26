@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: llama-3-8b
+  labels:
+    app.kubernetes.io/name: llama-3-8b
+    app.kubernetes.io/part-of: inference-gateway

@@ -1,0 +1,26 @@
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: llama-route
+spec:
+  parentRefs:
+    - name: unified-inference-gateway
+      namespace: inference-gateway
+      sectionName: https
+  hostnames:
+    - "gateway.internal.example.com"
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /models/llama/
+      filters:
+        - type: URLRewrite
+          urlRewrite:
+            path:
+              type: ReplacePrefixMatch
+              replacePrefixMatch: /
+      backendRefs:
+        - name: llama-3-8b-pool
+          group: inference.networking.k8s.io
+          kind: InferencePool

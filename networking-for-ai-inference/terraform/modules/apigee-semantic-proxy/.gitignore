@@ -1,0 +1,5 @@
+# Terraform staging directories (generated during apply)
+staging/
+
+# Generated proxy bundles
+*.zip

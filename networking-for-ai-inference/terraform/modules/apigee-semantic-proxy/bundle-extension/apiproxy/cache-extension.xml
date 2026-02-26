@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<APIProxy revision="1" name="cache-extension">
+  <DisplayName>cache-extension</DisplayName>
+  <Description>Semantic caching proxy for Service Extension (no target endpoint)</Description>
+  <BasePaths>/cache-processor</BasePaths>
+  <Policies>
+    <Policy>SCL-Semantic-Cache-Lookup</Policy>
+    <Policy>SCP-Semantic-Cache-Populate</Policy>
+    <Policy>RF-Return-Cached-Response</Policy>
+    <Policy>AM-Set-Cache-Headers</Policy>
+  </Policies>
+  <ProxyEndpoints>
+    <ProxyEndpoint>default</ProxyEndpoint>
+  </ProxyEndpoints>
+  <TargetEndpoints/>
+</APIProxy>

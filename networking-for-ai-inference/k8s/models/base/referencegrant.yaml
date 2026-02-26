@@ -1,0 +1,14 @@
+apiVersion: gateway.networking.k8s.io/v1beta1
+kind: ReferenceGrant
+metadata:
+  name: pool-grant
+spec:
+  from:
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
+      namespace: inference-gateway
+  to:
+    - group: inference.networking.k8s.io
+      kind: InferencePool
+    - group: ""
+      kind: Service

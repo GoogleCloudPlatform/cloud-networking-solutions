@@ -1,0 +1,36 @@
+nameReference:
+- kind: SecretProviderClass
+  fieldSpecs:
+  - path: spec/secretProviderClassName
+    kind: SecretSync
+- kind: ConfigMap
+  fieldSpecs:
+  - path: replacements/source/name
+- kind: SecretSync
+  fieldSpecs:
+  - path: spec/template/spec/containers/env/valueFrom/secretKeyRef/name
+    kind: Deployment
+- kind: Service
+  fieldSpecs:
+  - path: spec/endpointPickerRef/name
+    kind: InferencePool
+- kind: InferencePool
+  fieldSpecs:
+  - path: spec/poolRef/name
+    kind: InferenceObjective
+- kind: InferencePool
+  fieldSpecs:
+  - path: spec/rules/backendRefs/name
+    kind: HTTPRoute
+- kind: InferencePool
+  fieldSpecs:
+  - path: spec/targetRef/name
+    kind: HealthCheckPolicy
+- kind: Service
+  fieldSpecs:
+  - path: spec/targetRef/name
+    kind: HealthCheckPolicy
+- kind: InferencePool
+  fieldSpecs:
+  - path: spec/targetRef/name
+    kind: GCPBackendPolicy

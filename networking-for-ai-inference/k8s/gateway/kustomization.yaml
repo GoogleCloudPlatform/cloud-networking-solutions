@@ -1,0 +1,26 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: inference-gateway
+
+resources:
+  - gateway.yaml
+  - routes-root.yaml
+
+configMapGenerator:
+  - name: gateway-config
+    literals:
+      - DNS_HOSTNAME=gateway.internal.example.com
+    options:
+      disableNameSuffixHash: true
+
+replacements:
+  - source:
+      kind: ConfigMap
+      name: gateway-config
+      fieldPath: data.DNS_HOSTNAME
+    targets:
+      - select:
+          kind: HTTPRoute
+        fieldPaths:
+          - spec.hostnames.0

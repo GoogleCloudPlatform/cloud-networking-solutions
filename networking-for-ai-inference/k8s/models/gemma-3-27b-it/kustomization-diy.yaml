@@ -1,0 +1,79 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# DIY variant: no InferencePool, no EPP, no HTTPRoute.
+# Uses base-diy which only includes deployment + service + secrets.
+resources:
+  - namespace.yaml
+  - ../base-diy
+
+# Set namespace for all resources in this overlay
+namespace: gemma-3-27b-it
+
+# Prefix all resources for this model instance
+namePrefix: gemma-3-27b-it-
+
+configMapGenerator:
+  - name: model-config
+    behavior: replace
+    literals:
+      - MODEL_NAME=gemma-3-27b-it
+      - MODEL_ID=google/gemma-3-27b-it
+      - COMPUTE_CLASS=dws-flex-h100
+      - NEG_NAME=gemma-3-27b-it-neg
+    options:
+      disableNameSuffixHash: true
+
+replacements:
+  # Replace MODEL_NAME in vLLM deployment labels
+  - source:
+      kind: ConfigMap
+      name: model-config
+      fieldPath: data.MODEL_NAME
+    targets:
+      - select:
+          kind: Deployment
+          name: vllm-deployment
+        fieldPaths:
+          - spec.template.metadata.labels.[ai.gke.io/model]
+          - spec.selector.matchLabels.app
+          - spec.template.metadata.labels.app
+      - select:
+          kind: Service
+          name: llm-service
+        fieldPaths:
+          - spec.selector.app
+
+  # Replace MODEL_ID in vLLM container env and args
+  - source:
+      kind: ConfigMap
+      name: model-config
+      fieldPath: data.MODEL_ID
+    targets:
+      - select:
+          kind: Deployment
+          name: vllm-deployment
+        fieldPaths:
+          - spec.template.spec.containers.[name=inference-server].env.[name=MODEL_ID].value
+
+  # Replace COMPUTE_CLASS in nodeSelector
+  - source:
+      kind: ConfigMap
+      name: model-config
+      fieldPath: data.COMPUTE_CLASS
+    targets:
+      - select:
+          kind: Deployment
+          name: vllm-deployment
+        fieldPaths:
+          - spec.template.spec.nodeSelector.[cloud.google.com/compute-class]
+
+# Patch NEG name in Service annotation (namePrefix does not modify annotation values)
+patches:
+  - target:
+      kind: Service
+      name: llm-service
+    patch: |
+      - op: replace
+        path: /metadata/annotations/cloud.google.com~1neg
+        value: '{"exposed_ports": {"8000":{"name": "gemma-3-27b-it-neg"}}}'

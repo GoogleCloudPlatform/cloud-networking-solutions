@@ -1,0 +1,46 @@
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    app: apigee-apim-operator
+    provider: jkube
+    version: 1.0.0
+    group: com.apigee
+  name: apim-operator-cluster-role
+  namespace: apim
+rules:
+- apiGroups:
+  - admissionregistration.k8s.io
+  resources:
+  - validatingwebhookconfigurations
+  verbs:
+  - '*'
+- apiGroups:
+  - apim.googleapis.com
+  resources:
+  - '*'
+  verbs:
+  - '*'
+- apiGroups:
+  - gateway.networking.k8s.io
+  resources:
+  - gateways
+  - gatewayclasses
+  - httproutes
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - networking.istio.io
+  resources:
+  - envoyfilters
+  verbs:
+  - get
+  - list
+  - watch
+  - create
+  - update
+  - patch
+  - delete

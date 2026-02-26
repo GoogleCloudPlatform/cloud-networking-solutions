@@ -1,0 +1,30 @@
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+    name: unified-inference-gateway
+    annotations:
+        networking.gke.io/static-ip: ai-gateway-internal-gateway-ip
+    labels:
+        app.kubernetes.io/name: unified-inference-gateway
+        app.kubernetes.io/component: api-gateway
+spec:
+    gatewayClassName: gke-l7-rilb
+    listeners:
+        - name: http
+          protocol: HTTP
+          port: 80
+        - name: https
+          protocol: HTTPS
+          port: 443
+          tls:
+              mode: Terminate
+              options:
+                  networking.gke.io/cert-manager-certs: internal-certificate-regional
+          allowedRoutes:
+              kinds:
+                  - kind: HTTPRoute
+              namespaces:
+                  from: All
+    addresses:
+        - type: NamedAddress
+          value: ai-gateway-internal-gateway-ip

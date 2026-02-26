@@ -1,0 +1,100 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - namespace.yaml
+  - ../base
+  - route.yaml
+
+# Set namespace for all resources in this overlay
+namespace: llama-3-8b
+
+# Prefix all resources for this model instance
+namePrefix: llama-3-8b-
+
+configMapGenerator:
+  - name: model-config
+    behavior: replace
+    literals:
+      - MODEL_NAME=llama-3-8b
+      - MODEL_ID=meta-llama/Meta-Llama-3-8B-Instruct
+      - COMPUTE_CLASS=dws-flex-a100
+      - NEG_NAME=llama-3-8b-neg
+      - POOL_NAME=llama-3-8b-pool
+      - MODEL_NAMESPACE=llama-3-8b
+      - PROJECT_ID=PLACEHOLDER_PROJECT_ID
+    options:
+      disableNameSuffixHash: true
+
+replacements:
+  # Replace MODEL_NAME in vLLM deployment labels
+  - source:
+      kind: ConfigMap
+      name: model-config
+      fieldPath: data.MODEL_NAME
+    targets:
+      - select:
+          kind: Deployment
+          name: vllm-deployment
+        fieldPaths:
+          - spec.template.metadata.labels.[ai.gke.io/model]
+          - spec.selector.matchLabels.app
+          - spec.template.metadata.labels.app
+      - select:
+          kind: Service
+          name: llm-service
+        fieldPaths:
+          - spec.selector.app
+      - select:
+          kind: InferencePool
+          name: pool
+        fieldPaths:
+          - spec.selector.matchLabels.app
+
+  # Replace MODEL_ID in vLLM container env and args
+  - source:
+      kind: ConfigMap
+      name: model-config
+      fieldPath: data.MODEL_ID
+    targets:
+      - select:
+          kind: Deployment
+          name: vllm-deployment
+        fieldPaths:
+          - spec.template.spec.containers.[name=inference-server].env.[name=MODEL_ID].value
+
+  # Replace COMPUTE_CLASS in nodeSelector
+  - source:
+      kind: ConfigMap
+      name: model-config
+      fieldPath: data.COMPUTE_CLASS
+    targets:
+      - select:
+          kind: Deployment
+          name: vllm-deployment
+        fieldPaths:
+          - spec.template.spec.nodeSelector.[cloud.google.com/compute-class]
+
+  # Replace POOL_NAME in EPP args
+  - source:
+      kind: ConfigMap
+      name: model-config
+      fieldPath: data.POOL_NAME
+    targets:
+      - select:
+          kind: Deployment
+          labelSelector: app.kubernetes.io/name=epp
+        fieldPaths:
+          - spec.template.spec.containers.[name=epp].args.1
+
+  # Replace NAMESPACE_PLACEHOLDER in EPP args
+  - source:
+      kind: ConfigMap
+      name: model-config
+      fieldPath: data.MODEL_NAMESPACE
+    targets:
+      - select:
+          kind: Deployment
+          labelSelector: app.kubernetes.io/name=epp
+        fieldPaths:
+          - spec.template.spec.containers.[name=epp].args.3

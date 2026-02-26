@@ -1,0 +1,15 @@
+---
+apigeeMgmtUrl: https://apigee.googleapis.com
+apigeeOrg: ""
+controller:
+  image: gcr.io/apigee-release/hybrid/apigee-apim-operator:1.1.0
+  imagePullPolicy: IfNotPresent
+imagePullSecrets: []
+projectId: ""
+serviceAccount: ""
+serviceAccountKeyFileContent: ""
+federatedWorkloadIdentity:
+  enabled: false
+  credentialSourceFileContent: ""
+  audience: ""
+  tokenExpiration: 3600

@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: gemma-3-27b-it
+  labels:
+    app.kubernetes.io/name: gemma-3-27b-it
+    app.kubernetes.io/part-of: inference-gateway

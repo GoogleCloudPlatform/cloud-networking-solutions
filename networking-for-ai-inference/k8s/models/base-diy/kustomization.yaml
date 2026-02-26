@@ -1,0 +1,29 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# DIY base: deployment + service + secrets only.
+# Excludes InferencePool, HTTPRoute, ReferenceGrant, and GKE Gateway API
+# configurations that are only needed for the GKE Inference Gateway approach.
+#
+# Note: Files are copied from ../base/ because kustomize security policy
+# prevents cross-directory file references. Keep these in sync with base/.
+resources:
+  - deployment.yaml
+  - service.yaml
+  - secrets.yaml
+
+configurations:
+  - configurations.yaml
+
+# Default config
+configMapGenerator:
+  - name: model-config
+    literals:
+      - MODEL_NAME=base-model
+      - MODEL_ID=base-model-id
+      - COMPUTE_CLASS=dws-flex-h100
+      - NEG_NAME=base-model-neg
+    options:
+      disableNameSuffixHash: true
+      labels:
+        inference.gke.io/kind: model-config

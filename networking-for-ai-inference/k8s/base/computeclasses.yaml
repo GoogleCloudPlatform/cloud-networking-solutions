@@ -1,0 +1,66 @@
+apiVersion: cloud.google.com/v1
+kind: ComputeClass
+metadata:
+    name: dws-flex-h100
+spec:
+    priorities:
+        - machineType: a3-highgpu-1g
+          gpu:
+              type: nvidia-h100-80gb
+              count: 1
+              driverVersion: latest
+          spot: true
+        - machineType: a3-highgpu-1g
+          gpu:
+              type: nvidia-h100-80gb
+              count: 1
+              driverVersion: latest
+          maxRunDurationSeconds: 72000
+          flexStart:
+              enabled: true
+              nodeRecycling:
+                  leadTimeSeconds: 3600
+    nodePoolAutoCreation:
+        enabled: true
+---
+apiVersion: cloud.google.com/v1
+kind: ComputeClass
+metadata:
+    name: dws-flex-a100
+spec:
+    priorities:
+        - machineType: a2-ultragpu-1g
+          gpu:
+              type: nvidia-a100-80gb
+              count: 1
+              driverVersion: latest
+          spot: true
+        - machineType: a2-ultragpu-1g
+          gpu:
+              type: nvidia-a100-80gb
+              count: 1
+              driverVersion: latest
+          maxRunDurationSeconds: 72000
+          flexStart:
+              enabled: true
+              nodeRecycling:
+                  leadTimeSeconds: 3600
+        # If we can't get 80GB A100's try 40GB A100's
+        - machineType: a2-highgpu-1g
+          gpu:
+              type: nvidia-tesla-a100
+              count: 1
+              driverVersion: latest
+          spot: true
+        - machineType: a2-highgpu-1g
+          gpu:
+              type: nvidia-tesla-a100
+              count: 1
+              driverVersion: latest
+          maxRunDurationSeconds: 72000
+          flexStart:
+              enabled: true
+              nodeRecycling:
+                  leadTimeSeconds: 3600
+    nodePoolAutoCreation:
+        enabled: true

@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<AssignMessage async="false" continueOnError="false" enabled="true" name="AM-Set-Cache-Headers">
+  <DisplayName>Set Cache Headers</DisplayName>
+  <Properties/>
+  <Set>
+    <Headers>
+      <!-- Debug headers to track cache lookup -->
+      <Header name="X-Cache-Lookup">true</Header>
+      <Header name="X-Cache-Hit">{semanticcache.SCL-Semantic-Cache-Lookup.cachehit}</Header>
+      <Header name="X-Cache-Error">{semanticcache.SCL-Semantic-Cache-Lookup.error}</Header>
+      <Header name="X-Cache-Prompt">{semanticcache.SCL-Semantic-Cache-Lookup.userprompt}</Header>
+      <!-- Debug: Extracted body content -->
+      <Header name="X-Debug-Model">{extracted.debug.body_present}</Header>
+      <Header name="X-Debug-Messages">{extracted.debug.messages}</Header>
+    </Headers>
+  </Set>
+  <IgnoreUnresolvedVariables>true</IgnoreUnresolvedVariables>
+  <AssignTo createNew="false" transport="http" type="response"/>
+</AssignMessage>
