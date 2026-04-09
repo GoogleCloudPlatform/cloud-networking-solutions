@@ -419,7 +419,7 @@ TOKEN=$(gcloud auth print-access-token)
 curl -k https://smg.example.com/v1/chat/completions \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $TOKEN" \
-  -d '{"model": "google/gemini-2.0-flash", "messages": [{"role": "user", "content": "Say hi"}], "max_tokens": 10}'
+  -d '{"model": "google/gemini-3-flash-preview", "messages": [{"role": "user", "content": "Say hi"}], "max_tokens": 10}'
 ```
 
 ### Test Direct Backend Routing (via header)

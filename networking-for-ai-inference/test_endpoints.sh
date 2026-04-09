@@ -1,4 +1,18 @@
 #!/bin/bash
+# Copyright 2026 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     https://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 # Test script for AI Inference Gateway
 # Supports two gateway modes:
 #   gke  - GKE Inference Gateway (Gateway API with InferencePool/HTTPRoute)
@@ -153,8 +167,8 @@ elif [ "$MODE" = "diy" ]; then
 
 	echo "================================================================"
 	echo "2. Testing Gemini -> Vertex AI (Body-Based Routing)"
-	echo "   BBR extracts model='gemini-2.5-flash' from request body"
-	echo "   Sets header X-Gateway-Model-Name: gemini-2.5-flash"
+	echo "   BBR extracts model='gemini-3-flash-preview' from request body"
+	echo "   Sets header X-Gateway-Model-Name: gemini-3-flash-preview"
 	echo "   URL map prefix match 'gemini' -> Vertex AI backend"
 	echo "   Backend: us-east4-aiplatform.googleapis.com (Internet NEG)"
 	echo "================================================================"
@@ -165,7 +179,7 @@ elif [ "$MODE" = "diy" ]; then
 		echo "Run 'gcloud auth login' or ensure application default credentials."
 	else
 		PAYLOAD='{
-		  "model": "google/gemini-2.5-flash",
+		  "model": "google/gemini-3-flash-preview",
 		  "messages": [{"role": "user", "content": "What is 2+2? Reply with just the number."}]
 		}'
 		send_request "/v1/chat/completions" "$PAYLOAD" -H "Authorization: Bearer $TOKEN" -i

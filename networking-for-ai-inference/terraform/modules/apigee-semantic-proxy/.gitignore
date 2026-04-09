@@ -3,3 +3,6 @@ staging/
 
 # Generated proxy bundles
 *.zip
+
+.terraform/
+.terraform.lock.hcl

@@ -34,14 +34,14 @@ routing = {
       backend     = "vertex-ai"
       header_name = "X-Gateway-Model-Name"
       match_type  = "exact"
-      match_value = "gemini-1.5-pro"
+      match_value = "gemini-3.1-pro-preview"
     },
     {
       priority    = 20
       backend     = "gke-pool"
       header_name = "X-Gateway-Model-Name"
       match_type  = "exact"
-      match_value = "gemma-2-9b-it"
+      match_value = "gemma-3-27b-it"
     }
   ]
 }
@@ -50,17 +50,17 @@ routing = {
 **Test this configuration:**
 
 ```bash
-# Route to Vertex AI (gemini-1.5-pro)
+# Route to Vertex AI (gemini-3.1-pro-preview)
 kubectl exec curl-test -- curl -k -s -X POST \
   https://YOUR_GATEWAY_HOSTNAME/v1/chat/completions \
   -H "Content-Type: application/json" \
-  -d '{"model": "gemini-1.5-pro", "messages": [{"role": "user", "content": "Hello"}]}'
+  -d '{"model": "gemini-3.1-pro-preview", "messages": [{"role": "user", "content": "Hello"}]}'
 
-# Route to GKE (gemma-2-9b-it)
+# Route to GKE (gemma-3-27b-it)
 kubectl exec curl-test -- curl -k -s -X POST \
   https://YOUR_GATEWAY_HOSTNAME/v1/chat/completions \
   -H "Content-Type: application/json" \
-  -d '{"model": "gemma-2-9b-it", "messages": [{"role": "user", "content": "Hello"}]}'
+  -d '{"model": "gemma-3-27b-it", "messages": [{"role": "user", "content": "Hello"}]}'
 ```
 
 ---
@@ -108,7 +108,7 @@ kubectl exec curl-test -- curl -k -s -X POST \
 kubectl exec curl-test -- curl -k -s -X POST \
   https://YOUR_GATEWAY_HOSTNAME/v1/chat/completions \
   -H "Content-Type: application/json" \
-  -d '{"model": "gemini-1.5-flash", "messages": [{"role": "user", "content": "Hello"}]}'
+  -d '{"model": "gemini-3-flash-preview", "messages": [{"role": "user", "content": "Hello"}]}'
 ```
 
 ---
@@ -165,7 +165,7 @@ backends = {
 
 **How it works:**
 
-1. Request arrives with `{ "model": "gemma-2-9b" }`.
+1. Request arrives with `{ "model": "gemma-3-27b-it" }`.
 2. `ext_proc` calculates if this user (e.g., via `X-User-ID`) should be in the experiment.
 3. If yes, `ext_proc` injects `X-Backend-Type: gke-experimental`.
 4. The Load Balancer matches the injected header and routes to the experimental pool, ignoring lower priority model/path rules.
@@ -177,14 +177,14 @@ backends = {
 kubectl exec curl-test -- curl -k -s -X POST \
   https://YOUR_GATEWAY_HOSTNAME/v1/chat/completions \
   -H "Content-Type: application/json" \
-  -d '{"model": "gemma-2-9b", "messages": [{"role": "user", "content": "Hello"}]}'
+  -d '{"model": "gemma-3-27b-it", "messages": [{"role": "user", "content": "Hello"}]}'
 
 # Force experimental backend via header
 kubectl exec curl-test -- curl -k -s -X POST \
   https://YOUR_GATEWAY_HOSTNAME/v1/chat/completions \
   -H "Content-Type: application/json" \
   -H "X-Backend-Type: gke-experimental" \
-  -d '{"model": "gemma-2-9b", "messages": [{"role": "user", "content": "Hello"}]}'
+  -d '{"model": "gemma-3-27b-it", "messages": [{"role": "user", "content": "Hello"}]}'
 ```
 
 ---

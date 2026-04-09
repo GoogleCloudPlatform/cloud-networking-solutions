@@ -1,4 +1,18 @@
 #!/bin/bash
+# Copyright 2026 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     https://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 # Copyright 2025 Google LLC
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -482,18 +496,12 @@ if [ "$GATEWAY_TYPE" == "gke" ]; then
 			>features/unified-extension/unified-extension.yaml
 	fi
 
-	# --- Render Helm charts (if semantic-cache is enabled) ---
+	# --- Render Helm values template (if semantic-cache is enabled) ---
 	if [[ $FEATURES == *"semantic-cache"* ]] || [[ $FEATURES == *"unified-extension"* ]]; then
-		log "Rendering Apigee Operator Helm charts..."
-		helm template apigee-apim-crds ./features/semantic-cache-infra/charts/apigee-apim-operator-crds-1.1.0/apigee-apim-operator-crds \
-			--namespace apim --include-crds >features/semantic-cache-infra/apigee-apim-operator-crds.gen.yaml
-
-		helm template apigee-apim-operator ./features/semantic-cache-infra/charts/apigee-apim-operator-helm-1.1.0/apigee-apim-operator-helm \
-			--namespace apim \
-			--set projectId="$PROJECT_ID" \
-			--set serviceAccount="apigee-apim-gsa@$PROJECT_ID.iam.gserviceaccount.com" \
-			--set apigeeOrg="$PROJECT_ID" \
-			--set generateEnv=false >features/semantic-cache-infra/apigee-apim-operator-helm.gen.yaml
+		log "Rendering Apigee APIM operator values from template..."
+		envsubst "$FEATURE_ENVSUBST_VARS" \
+			<features/semantic-cache-infra/values.yaml.tmpl \
+			>features/semantic-cache-infra/values.yaml
 	fi
 
 	# --- Render root kustomization from template ---
@@ -505,11 +513,11 @@ if [ "$GATEWAY_TYPE" == "gke" ]; then
 
 	if [ "$DRY_RUN" = true ]; then
 		log "Dry-run: validating kustomize output..."
-		kubectl kustomize . >/dev/null
+		kubectl kustomize --enable-helm . >/dev/null
 		log "Dry-run: kustomize validation passed."
 
 		# Check for unresolved placeholders in rendered output
-		RENDERED=$(kubectl kustomize .)
+		RENDERED=$(kubectl kustomize --enable-helm .)
 		if echo "$RENDERED" | grep -qP 'PLACEHOLDER_'; then
 			echo "$RENDERED" | grep -oP 'PLACEHOLDER_\w+' | sort -u
 			error "Unresolved PLACEHOLDER_ values found in rendered manifests."
@@ -525,7 +533,7 @@ if [ "$GATEWAY_TYPE" == "gke" ]; then
 	# --- Deploy to GKE ---
 	if [[ $FEATURES == *"semantic-cache"* ]] || [[ $FEATURES == *"unified-extension"* ]]; then
 		log "Deploying CRDs and waiting for establishment..."
-		kubectl apply -f features/semantic-cache-infra/apigee-apim-operator-crds.gen.yaml
+		kubectl kustomize --enable-helm . | kubectl apply --server-side -f - 2>/dev/null || true
 		kubectl apply -k crds/
 		sleep 20
 	else
@@ -538,7 +546,7 @@ if [ "$GATEWAY_TYPE" == "gke" ]; then
 	kubectl apply -k custom-metrics/
 
 	log "Deploying inference gateway resources..."
-	kubectl kustomize . | kubectl apply -f -
+	kubectl kustomize --enable-helm . | kubectl apply -f -
 
 	# --- Wait for Apigee operator and deploy semantic cache proxy ---
 	if [[ $FEATURES == *"semantic-cache"* ]] || [[ $FEATURES == *"unified-extension"* ]]; then

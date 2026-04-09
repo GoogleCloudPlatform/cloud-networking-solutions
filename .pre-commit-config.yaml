@@ -47,18 +47,35 @@ repos:
       rev: v1.5.5
       hooks:
           - id: forbid-crlf
-          # - id: insert-license
-          #   name: Insert license in terraform, yaml, sh, and go files
-          #   files: \.(tf|go|yaml|sh)$
-          #   args:
-          #     - --license-filepath
-          #     - docs/LICENSE_HEADER.txt
-          # - id: insert-license
-          #   name: Insert license Dockerfiles
-          #   files: Dockerfile$
-          #   args:
-          #     - --license-filepath
-          #     - docs/LICENSE_HEADER.txt
+          - id: insert-license
+            name: Insert license in terraform, yaml, sh, and go files
+            files: \.(tf|yaml|sh)$
+            args:
+              - --license-filepath
+              - docs/LICENSE_HEADER.txt
+          - id: insert-license
+            name: Insert license Dockerfiles
+            files: Dockerfile$
+            args:
+              - --license-filepath
+              - docs/LICENSE_HEADER.txt
+          - id: insert-license
+            name: Insert license in xml files
+            files: \.xml$
+            args:
+              - --license-filepath
+              - docs/LICENSE_HEADER.txt
+              - --comment-style
+              - <!--|  |-->
+          - id: insert-license
+            name: Insert license in go, and proto files
+            files: \.(go|proto)$
+            exclude: ".pb.go$"
+            args:
+              - --license-filepath
+              - docs/LICENSE_HEADER.txt
+              - --comment-style
+              - //
 
     - repo: https://github.com/dnephin/pre-commit-golang
       rev: v0.5.1

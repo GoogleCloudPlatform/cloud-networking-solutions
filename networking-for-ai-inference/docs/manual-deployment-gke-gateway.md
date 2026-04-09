@@ -279,24 +279,16 @@ if [ -f "features/unified-extension/unified-extension.yaml.tmpl" ]; then
 fi
 ```
 
-### Step 4: Render Helm charts (semantic cache only)
+### Step 4: Render Helm values (semantic cache only)
 
-If you enabled `semantic-cache` or `unified-extension`, render the Apigee APIM operator charts:
+If you enabled `semantic-cache` or `unified-extension`, render the Apigee APIM operator values template. The Helm charts are pulled from the OCI registry automatically by Kustomize's `helmCharts` feature at build time.
 
 ```bash
-helm template apigee-apim-crds \
-    ./features/semantic-cache-infra/charts/apigee-apim-operator-crds-1.1.0/apigee-apim-operator-crds \
-    --namespace apim --include-crds \
-    > features/semantic-cache-infra/apigee-apim-operator-crds.gen.yaml
+FEATURE_ENVSUBST_VARS='$REGION $PROJECT_ID $MODEL_ARMOR_TEMPLATE $SEMANTIC_PROXY_NAME'
 
-helm template apigee-apim-operator \
-    ./features/semantic-cache-infra/charts/apigee-apim-operator-helm-1.1.0/apigee-apim-operator-helm \
-    --namespace apim \
-    --set projectId="$PROJECT_ID" \
-    --set serviceAccount="apigee-apim-gsa@$PROJECT_ID.iam.gserviceaccount.com" \
-    --set apigeeOrg="$PROJECT_ID" \
-    --set generateEnv=false \
-    > features/semantic-cache-infra/apigee-apim-operator-helm.gen.yaml
+envsubst "$FEATURE_ENVSUBST_VARS" \
+    < features/semantic-cache-infra/values.yaml.tmpl \
+    > features/semantic-cache-infra/values.yaml
 ```
 
 ### Step 5: Render the root kustomization.yaml
@@ -311,11 +303,11 @@ envsubst "$KUST_ENVSUBST_VARS" \
 
 ### Step 6: Deploy CRDs
 
-If semantic cache or unified extension is enabled, deploy the Apigee CRDs first:
+If semantic cache or unified extension is enabled, use `kubectl kustomize --enable-helm` to render the Helm charts (including Apigee CRDs) and apply them first:
 
 ```bash
 # With semantic cache or unified extension:
-kubectl apply -f features/semantic-cache-infra/apigee-apim-operator-crds.gen.yaml
+kubectl kustomize --enable-helm . | kubectl apply --server-side -f - 2>/dev/null || true
 kubectl apply -k crds/
 sleep 20
 
@@ -333,7 +325,7 @@ kubectl apply -k custom-metrics/
 ### Step 8: Deploy all resources
 
 ```bash
-kubectl kustomize . | kubectl apply -f -
+kubectl kustomize --enable-helm . | kubectl apply -f -
 ```
 
 ### Step 9: Wait for Apigee operator (semantic cache only)
