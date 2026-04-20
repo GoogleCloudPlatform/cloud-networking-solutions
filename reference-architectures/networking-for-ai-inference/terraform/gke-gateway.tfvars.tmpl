@@ -1,0 +1,99 @@
+# GKE Inference Gateway configuration template
+#
+# Generate a tfvars file using envsubst:
+#   export PROJECT_ID=my-project REGION=us-east4 DOMAIN_NAME=example.gcp.company.com ...
+#   envsubst '$PROJECT_ID $REGION $DOMAIN_NAME $DNS_ZONE_NAME $HUGGINGFACE_TOKEN $ENABLE_HF $ENABLE_MODEL_ARMOR $ENABLE_SEMANTIC_CACHE $MODEL_NAMESPACES_TF $VPC_NAME' \
+#     < gke-gateway.tfvars.tmpl > gke-gateway.tfvars
+#
+# Required environment variables:
+#   PROJECT_ID            - GCP project ID (e.g., my-project-12345)
+#   REGION                - GCP region (e.g., us-east4)
+#   DOMAIN_NAME           - Base domain without trailing dot (e.g., example.gcp.company.com)
+#   DNS_ZONE_NAME         - Cloud DNS zone name
+#   HUGGINGFACE_TOKEN     - HuggingFace API token (or "null" if not set)
+#   ENABLE_HF             - Whether HF token is enabled ("true"/"false")
+#   ENABLE_MODEL_ARMOR    - Whether Model Armor is enabled ("true"/"false")
+#   ENABLE_SEMANTIC_CACHE - Whether Semantic Cache is enabled ("true"/"false")
+#   MODEL_NAMESPACES_TF   - Terraform list of model namespaces (e.g., ["gemma-3-27b-it"])
+#   VPC_NAME              - VPC network name (e.g., "inference-vpc")
+
+project_id = "${PROJECT_ID}"
+region     = "${REGION}"
+
+name_prefix = "igw"
+
+# DNS Configuration
+dns_zone_domain            = "${DOMAIN_NAME}."
+dns_zone_name              = "${DNS_ZONE_NAME}"
+enable_certificate_manager = true
+
+# Networking Configuration
+gateway_scope = "regional"
+
+# GKE Clusters Configuration
+clusters = {
+  inference-cluster = {
+    dns_domain          = "inference"
+    deletion_protection = false
+    secret_sync_config = {
+      enabled = true
+    }
+  }
+}
+
+# Enable security features
+enable_model_armor    = ${ENABLE_MODEL_ARMOR}
+enable_semantic_cache = ${ENABLE_SEMANTIC_CACHE}
+
+# Apigee Configuration
+apigee_org_display_name    = "Inference Gateway Apigee"
+apigee_org_description     = "Apigee organization for AI/ML inference gateway API management"
+apigee_billing_type        = "PAYG"
+apigee_analytics_region    = "${REGION}"
+apigee_runtime_type        = "CLOUD"
+apigee_disable_vpc_peering = true
+
+# Apigee Environment Groups
+apigee_envgroups = {
+  prod = ["api.internal.${DOMAIN_NAME}", "internal.${DOMAIN_NAME}"]
+}
+
+# Apigee Environments
+apigee_environments = {
+  apis-prod = {
+    display_name = "APIs Production"
+    description  = "Production environment for semantic cache and inference APIs"
+    envgroups    = ["prod"]
+    type         = "COMPREHENSIVE"
+    properties = {
+      "apigee-service-extension-enabled" = "true"
+    }
+  }
+}
+
+# Apigee Instances
+apigee_instances = {
+  ${REGION} = {
+    environments = ["apis-prod"]
+  }
+}
+
+# Apigee Endpoint Attachments
+apigee_endpoint_attachments = {}
+
+# GKE Inference Gateway (GKE-native Gateway API)
+# Static IPs and certificates are managed by networking and certificates modules.
+gke_gateway = {
+  gateway = {
+    name          = "unified-inference-gateway"
+    namespace     = "inference-gateway"
+    hostname      = "gateway.internal.${DOMAIN_NAME}"
+    gateway_class = "gke-l7-rilb"
+  }
+}
+
+# Disable Self Managed Gateway for this configuration
+self_managed_gateway = null
+
+huggingface_token        = ${HUGGINGFACE_TOKEN}
+model_namespaces         = ${MODEL_NAMESPACES_TF}

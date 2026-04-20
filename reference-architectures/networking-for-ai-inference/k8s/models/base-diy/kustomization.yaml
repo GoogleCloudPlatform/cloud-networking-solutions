@@ -1,0 +1,43 @@
+# Copyright 2026 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     https://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# DIY base: deployment + service + secrets only.
+# Excludes InferencePool, HTTPRoute, ReferenceGrant, and GKE Gateway API
+# configurations that are only needed for the GKE Inference Gateway approach.
+#
+# Note: Files are copied from ../base/ because kustomize security policy
+# prevents cross-directory file references. Keep these in sync with base/.
+resources:
+  - deployment.yaml
+  - service.yaml
+  - secrets.yaml
+
+configurations:
+  - configurations.yaml
+
+# Default config
+configMapGenerator:
+  - name: model-config
+    literals:
+      - MODEL_NAME=base-model
+      - MODEL_ID=base-model-id
+      - COMPUTE_CLASS=dws-flex-h100
+      - NEG_NAME=base-model-neg
+    options:
+      disableNameSuffixHash: true
+      labels:
+        inference.gke.io/kind: model-config

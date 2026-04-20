@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<SemanticCacheLookup async="false" continueOnError="false" enabled="true" name="SCL-Semantic-Cache-Lookup">
+  <DisplayName>Semantic Cache Lookup</DisplayName>
+  <IgnoreUnresolvedVariables>false</IgnoreUnresolvedVariables>
+  <Embeddings>
+    <VertexAI>
+      <URL>https://${region}-aiplatform.googleapis.com/v1/projects/${project_number}/locations/${region}/publishers/google/models/${embedding_model}:predict</URL>
+    </VertexAI>
+  </Embeddings>
+  <SimilaritySearch>
+    <VertexAI>
+      <URL>https://${public_endpoint_domain}/v1/projects/${project_number}/locations/${region}/indexEndpoints/${endpoint_numeric_id}:findNeighbors</URL>
+      <DeployedIndexID>${deployed_index_id}</DeployedIndexID>
+      <Threshold>${similarity_threshold}</Threshold>
+    </VertexAI>
+  </SimilaritySearch>
+  <UserPromptSource>{jsonPath('$.messages[0].content',request.content,true)}</UserPromptSource>
+</SemanticCacheLookup>

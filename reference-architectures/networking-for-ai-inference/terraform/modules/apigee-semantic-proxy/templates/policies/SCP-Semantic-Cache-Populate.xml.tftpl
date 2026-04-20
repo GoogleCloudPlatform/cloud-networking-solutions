@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<SemanticCachePopulate async="false" continueOnError="true" enabled="true" name="SCP-Semantic-Cache-Populate">
+  <DisplayName>Semantic Cache Populate</DisplayName>
+  <IgnoreUnresolvedVariables>false</IgnoreUnresolvedVariables>
+  <SimilaritySearch>
+    <VertexAI>
+      <URL>https://${region}-aiplatform.googleapis.com/v1/projects/${project_number}/locations/${region}/indexes/${index_numeric_id}:upsertDatapoints</URL>
+    </VertexAI>
+  </SimilaritySearch>
+  <TTLInSeconds>${ttl_seconds}</TTLInSeconds>
+</SemanticCachePopulate>
