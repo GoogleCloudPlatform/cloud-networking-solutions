@@ -1,0 +1,152 @@
+# Copyright 2025 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#      http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# legacy-dms HTTP to HTTPS redirect
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+    name: legacy-dms-redirect
+    labels:
+        app.kubernetes.io/name: internal-gateway
+        app.kubernetes.io/component: http-redirect
+spec:
+    parentRefs:
+        - name: internal-gateway
+          sectionName: http
+    hostnames:
+        - "dms.internal.${BASE_DOMAIN}"
+    rules:
+        - filters:
+              - type: RequestRedirect
+                requestRedirect:
+                    scheme: https
+                    statusCode: 301
+---
+# legacy-dms backend route (host-based: dms.internal.${BASE_DOMAIN})
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+    name: legacy-dms-route
+    labels:
+        app.kubernetes.io/name: internal-gateway
+        app.kubernetes.io/component: legacy-dms
+spec:
+    parentRefs:
+        - name: internal-gateway
+          sectionName: https
+    hostnames:
+        - "dms.internal.${BASE_DOMAIN}"
+    rules:
+        - matches:
+              - path:
+                    type: PathPrefix
+                    value: /mcp
+          backendRefs:
+              - name: legacy-dms-svc
+                port: 8080
+---
+# income-verification-api HTTP to HTTPS redirect
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+    name: income-verification-api-redirect
+    labels:
+        app.kubernetes.io/name: internal-gateway
+        app.kubernetes.io/component: http-redirect
+spec:
+    parentRefs:
+        - name: internal-gateway
+          sectionName: http
+    hostnames:
+        - "income-verification.internal.${BASE_DOMAIN}"
+    rules:
+        - filters:
+              - type: RequestRedirect
+                requestRedirect:
+                    scheme: https
+                    statusCode: 301
+---
+# income-verification-api backend route (host-based: income-verification.internal.${BASE_DOMAIN})
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+    name: income-verification-api-route
+    labels:
+        app.kubernetes.io/name: internal-gateway
+        app.kubernetes.io/component: income-verification-api
+spec:
+    parentRefs:
+        - name: internal-gateway
+          sectionName: https
+    hostnames:
+        - "income-verification.internal.${BASE_DOMAIN}"
+    rules:
+        - matches:
+              - path:
+                    type: PathPrefix
+                    value: /api/income-verification
+          backendRefs:
+              - name: income-verification-api-svc
+                port: 8080
+        - matches:
+              - path:
+                    type: PathPrefix
+                    value: /mcp
+          backendRefs:
+              - name: income-verification-api-svc
+                port: 8080
+---
+# corporate-email HTTP to HTTPS redirect
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+    name: corporate-email-redirect
+    labels:
+        app.kubernetes.io/name: internal-gateway
+        app.kubernetes.io/component: http-redirect
+spec:
+    parentRefs:
+        - name: internal-gateway
+          sectionName: http
+    hostnames:
+        - "email.internal.${BASE_DOMAIN}"
+    rules:
+        - filters:
+              - type: RequestRedirect
+                requestRedirect:
+                    scheme: https
+                    statusCode: 301
+---
+# corporate-email backend route (host-based: email.internal.${BASE_DOMAIN})
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+    name: corporate-email-route
+    labels:
+        app.kubernetes.io/name: internal-gateway
+        app.kubernetes.io/component: corporate-email
+spec:
+    parentRefs:
+        - name: internal-gateway
+          sectionName: https
+    hostnames:
+        - "email.internal.${BASE_DOMAIN}"
+    rules:
+        - matches:
+              - path:
+                    type: PathPrefix
+                    value: /mcp
+          backendRefs:
+              - name: corporate-email-svc
+                port: 8080

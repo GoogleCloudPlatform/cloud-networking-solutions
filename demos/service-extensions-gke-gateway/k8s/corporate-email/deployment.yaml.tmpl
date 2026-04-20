@@ -1,0 +1,111 @@
+# Copyright 2025 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#      http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+    name: corporate-email
+    labels:
+        app: corporate-email
+        app.kubernetes.io/name: corporate-email
+        app.kubernetes.io/component: server
+spec:
+    replicas: 2
+    selector:
+        matchLabels:
+            app: corporate-email
+    template:
+        metadata:
+            labels:
+                app: corporate-email
+                app.kubernetes.io/name: corporate-email
+        spec:
+            serviceAccountName: corporate-email
+            containers:
+                - name: corporate-email
+                  image: us-central1-docker.pkg.dev/${PROJECT_ID}/gateway-docker/corporate-email:latest
+                  ports:
+                      - containerPort: 8080
+                        name: http
+                        protocol: TCP
+                  env:
+                      - name: PYTHONDONTWRITEBYTECODE
+                        value: "1"
+                      - name: OTEL_SERVICE_NAME
+                        value: "corporate-email"
+                      - name: OTEL_TRACES_SAMPLER
+                        value: "parentbased_traceidratio"
+                      - name: OTEL_TRACES_SAMPLER_ARG
+                        value: "1.0"
+                      - name: GOOGLE_CLOUD_PROJECT
+                        value: "${PROJECT_ID}"
+                      - name: POD_NAME
+                        valueFrom:
+                            fieldRef:
+                                fieldPath: metadata.name
+                      - name: NAMESPACE_NAME
+                        valueFrom:
+                            fieldRef:
+                                fieldPath: metadata.namespace
+                      - name: CONTAINER_NAME
+                        value: "corporate-email"
+                      - name: OTEL_RESOURCE_ATTRIBUTES
+                        value: k8s.pod.name=$(POD_NAME),k8s.namespace.name=$(NAMESPACE_NAME),k8s.container.name=$(CONTAINER_NAME)
+                  resources:
+                      requests:
+                          cpu: "100m"
+                          memory: "128Mi"
+                      limits:
+                          cpu: "500m"
+                          memory: "512Mi"
+                  livenessProbe:
+                      httpGet:
+                          path: /health
+                          port: 8080
+                      initialDelaySeconds: 10
+                      periodSeconds: 30
+                      timeoutSeconds: 10
+                      failureThreshold: 3
+                  readinessProbe:
+                      httpGet:
+                          path: /health
+                          port: 8080
+                      initialDelaySeconds: 5
+                      periodSeconds: 10
+                      timeoutSeconds: 5
+                      successThreshold: 1
+                      failureThreshold: 3
+                  securityContext:
+                      runAsNonRoot: true
+                      runAsUser: 65532
+                      runAsGroup: 65532
+                      readOnlyRootFilesystem: true
+                      allowPrivilegeEscalation: false
+                      capabilities:
+                          drop:
+                              - ALL
+            securityContext:
+                runAsNonRoot: true
+                runAsUser: 65532
+                runAsGroup: 65532
+                fsGroup: 65532
+                seccompProfile:
+                    type: RuntimeDefault
+            topologySpreadConstraints:
+                - maxSkew: 1
+                  topologyKey: topology.kubernetes.io/zone
+                  whenUnsatisfiable: ScheduleAnyway
+                  labelSelector:
+                      matchLabels:
+                          app: corporate-email

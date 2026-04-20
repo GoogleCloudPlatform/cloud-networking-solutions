@@ -1,0 +1,86 @@
+# Copyright 2026 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     https://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+repos:
+    - repo: https://github.com/antonbabenko/pre-commit-terraform
+      rev: v1.99.0
+      hooks:
+          - id: terraform_fmt
+          - id: terraform_validate
+          - id: terraform_tflint
+
+    - repo: https://github.com/pre-commit/pre-commit-hooks
+      rev: v4.5.0
+      hooks:
+          - id: trailing-whitespace
+            exclude: ^.direnv
+          - id: end-of-file-fixer
+            exclude: ^.direnv
+
+    - repo: https://github.com/scop/pre-commit-shfmt
+      rev: v3.11.0-1
+      hooks:
+          - id: shfmt
+            exclude: ^.direnv
+
+    - repo: https://github.com/hadolint/hadolint
+      rev: v2.12.0
+      hooks:
+          - id: hadolint
+            files: Dockerfile$
+            args:
+                - --ignore=DL3007
+                - --ignore=DL3018
+
+    - repo: https://github.com/Lucas-C/pre-commit-hooks
+      rev: v1.5.5
+      hooks:
+          - id: forbid-crlf
+          # - id: insert-license
+          #   name: Insert license in terraform, yaml, sh, and go files
+          #   files: \.(tf|go|yaml|sh)$
+          #   args:
+          #     - --license-filepath
+          #     - docs/LICENSE_HEADER.txt
+          # - id: insert-license
+          #   name: Insert license Dockerfiles
+          #   files: Dockerfile$
+          #   args:
+          #     - --license-filepath
+          #     - docs/LICENSE_HEADER.txt
+
+    - repo: https://github.com/dnephin/pre-commit-golang
+      rev: v0.5.1
+      hooks:
+          - id: go-fmt
+          - id: go-imports
+          - id: go-mod-tidy
+
+    - repo: https://github.com/golangci/golangci-lint
+      rev: v1.64.6
+      hooks:
+          - id: golangci-lint
+            entry: bash -c 'cd networking-for-ai-inference/src/bbr-ext-proc-go && golangci-lint run --fix'
+
+    - repo: https://github.com/codespell-project/codespell
+      rev: v2.4.1
+      hooks:
+          - id: codespell
+            files: \.(tf|go|yaml|sh|md)$
+
+    - repo: https://github.com/tcort/markdown-link-check
+      rev: v3.13.7
+      hooks:
+          - id: markdown-link-check
+            files: \.(md)$
