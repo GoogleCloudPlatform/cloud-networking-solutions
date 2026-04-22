@@ -1,7 +1,7 @@
 # Securing Cross-Cloud Agentic Enterprise Deployments
 
 This repository contains the supporting code for the
-[Securing Cross-Cloud Agentic Enterprise Deployments](https://codelabs.developers.google.com/PLACEHOLDER)
+[Securing Cross-Cloud Agentic Enterprise Deployments](https://codelabs.developers.google.com/next26/aiinfra-learning-pod/screen1-securing-cross-cloud-agentic)
 codelab.
 
 In this codelab, you deploy a multi-agent system securely using the Agent
@@ -70,7 +70,7 @@ k8s/                           # Kustomize manifests per service
 ## Quick start
 
 Follow the step-by-step instructions in the
-[codelab](https://goo.gle/Infra1-Learn26?r=qr). A summary of the
+[codelab]([https://goo.gle/Infra1-Learn26?r=qr](https://codelabs.developers.google.com/next26/aiinfra-learning-pod/screen1-securing-cross-cloud-agentic). A summary of the
 key steps:
 
 ```bash
