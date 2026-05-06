@@ -20,6 +20,7 @@ Contains complete, end-to-end reference architectures demonstrating best practic
 Contains smaller, focused demonstrations of specific networking features or integration patterns.
 
 *   **[Service Extensions GKE Gateway](demos/service-extensions-gke-gateway)**: Shows how to use Service Extensions with GKE Gateway to customize traffic management.
+*   **[Agent Gateway](demos/agent-gateway)**: Demonstrates secure cross-cloud agentic deployments with an ADK agent on Agent Runtime, MCP servers behind an internal Gateway, PSC connectivity, and Model Armor guardrails.
 
 # Running samples
 
