@@ -14,10 +14,6 @@ CONTENT_AUTHZ extension screens prompts and responses. Tool URLs are
 discovered at runtime through the Agent Registry rather than baked into the
 agent. End-to-end execution is observable in Cloud Trace.
 
-For the full walkthrough — concepts, screenshots, troubleshooting, Gemini
-Enterprise wiring, cleanup — see [`codelab.md`](codelab.md). This README is a
-quick-reference summary.
-
 ## Architecture
 
 ![Architecture](docs/architecture.png)

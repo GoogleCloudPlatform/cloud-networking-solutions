@@ -25,17 +25,7 @@
  * 5. Public DNS zone and certs (optional)
  */
 
-# Phase 0: Provider Configuration
-provider "google" {
-  project = var.project_id
-  region  = var.region
-}
-
-provider "google-beta" {
-  project                          = var.project_id
-  region                           = var.region
-  network_services_custom_endpoint = "https://networkservices.googleapis.com/v1beta1/"
-}
+# Provider configuration lives in providers.tf.
 
 # Derived values controlled by `enable_cloud_run_private_networking`. Folded
 # into a `locals` block so the gating logic lives in one place rather than
