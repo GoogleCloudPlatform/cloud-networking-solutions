@@ -241,7 +241,13 @@ def _discover_mcp_toolsets() -> list:
         except Exception:
             logger.exception("Failed to build toolset for MCP server %s", name)
             continue
-        resolved_url = getattr(getattr(toolset, "_connection_params", None), "url", None)
+        # ADK's StreamableHTTPConnectionParams default is 5s, which is shorter
+        # than a Cloud Run cold start when min_instance_count=0. Survive a
+        # restart/scale-out even when an instance happens to be cold.
+        conn_params = getattr(toolset, "_connection_params", None)
+        if conn_params is not None and hasattr(conn_params, "timeout"):
+            conn_params.timeout = 30.0
+        resolved_url = getattr(conn_params, "url", None)
         logger.info(
             "  built toolset: server=%s displayName=%r prefix=%s resolved_url=%s",
             name,

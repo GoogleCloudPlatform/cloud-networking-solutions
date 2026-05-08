@@ -21,7 +21,12 @@ from unittest.mock import MagicMock, patch
 import httpx
 
 from agent import agent as agent_module
-from agent.agent import _find_http_status_error, _handle_tool_error, _render_mcp_services_doc
+from agent.agent import (
+    _discover_mcp_toolsets,
+    _find_http_status_error,
+    _handle_tool_error,
+    _render_mcp_services_doc,
+)
 
 
 def _make_http_status_error(status_code: int) -> httpx.HTTPStatusError:
@@ -143,3 +148,37 @@ class TestInstructionRendering:
         assert "`dms_*`" not in instruction
         assert "`email_*`" not in instruction
         assert "`income_*`" not in instruction
+
+
+class TestConnectionTimeoutOverride:
+    """ADK's 5s default trips on Cloud Run cold starts; we override it to 30s."""
+
+    def test_discover_overrides_toolset_timeout(self, monkeypatch):
+        monkeypatch.setenv("MCP_REGISTRY_PROJECT", "test-project")
+        monkeypatch.setenv("MCP_REGISTRY_LOCATION", "us-central1")
+        monkeypatch.delenv("MCP_REGISTRY_FILTER", raising=False)
+        monkeypatch.delenv("MCP_REGISTRY_ENDPOINT", raising=False)
+
+        # Connection params object whose timeout we expect to be mutated.
+        conn_params = MagicMock()
+        conn_params.timeout = 5.0
+        conn_params.url = "https://x.example/mcp"
+
+        toolset = MagicMock()
+        toolset._connection_params = conn_params
+        toolset.tool_name_prefix = "x"
+
+        registry_instance = MagicMock()
+        registry_instance.list_mcp_servers.return_value = {
+            "mcpServers": [{"name": "projects/p/locations/l/mcpServers/x", "displayName": "x"}]
+        }
+        registry_instance.get_mcp_toolset.return_value = toolset
+
+        with patch(
+            "google.adk.integrations.agent_registry.AgentRegistry",
+            return_value=registry_instance,
+        ):
+            result = _discover_mcp_toolsets()
+
+        assert result == [toolset]
+        assert conn_params.timeout == 30.0
