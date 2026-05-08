@@ -27,10 +27,13 @@ locals {
       display_name   = coalesce(cfg.display_name, name)
       description    = cfg.description
       tool_spec_path = cfg.tool_spec_path
+      # Both URL modes must include the /mcp path: FastMCP mounts the protocol
+      # endpoint at /mcp (see src/*/main.py: mcp.http_app(path="/mcp", ...)),
+      # and Cloud Run returns 404 for any other path, including /.
       url = (
         var.mcp_url_mode == "internal_lb"
         ? "https://${name}.${local.mcp_internal_dns_domain_trimmed}/mcp"
-        : var.mcp_service_urls[name]
+        : "${var.mcp_service_urls[name]}/mcp"
       )
     }
   }

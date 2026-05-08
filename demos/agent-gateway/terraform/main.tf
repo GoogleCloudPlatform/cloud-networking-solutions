@@ -477,6 +477,7 @@ module "agent_gateway" {
   ) : []
 
   authz_extension_fail_open = var.agent_gateway_authz_fail_open
+  iap_iam_enforcement_mode  = var.agent_gateway_iap_iam_enforcement_mode
 
   # Auto-merge the MCP private zone with any user-supplied domains (e.g.
   # `run.app.`). Computed in main.tf locals so the user only declares the

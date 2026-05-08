@@ -26,6 +26,9 @@ organization_id = "123456789012"
 # Members granted demo-wide roles
 platform_admin_members = ["user:admin@example.com"]
 
+# IAP Enforcement Mode ("ENFORCED" or null)
+agent_gateway_iap_iam_enforcement_mode = "ENFORCED"
+
 
 # ##############################################################################
 # # OPTIONAL — everything below this line has a default and is pre-tuned for   #
@@ -95,15 +98,22 @@ mcp_lb_protocol = "HTTPS"
 # The `us-docker.pkg.dev/cloudrun/container/placeholder` image is a Google-
 # provided stub; replace with your own image in Artifact Registry before the
 # service handles real traffic (Skaffold deploys overwrite the image tag).
+# min_instance_count = 1 keeps one warm instance per service. MCP tools/list
+# runs at the start of every agent turn with a 5s initialize() timeout; a
+# scale-to-zero cold start (~16-19s observed) trips that timeout and drops all
+# MCP tools for the request. Set to 0 if you don't mind cold-start failures.
 mcp_services = {
   legacy-dms = {
-    image = "us-docker.pkg.dev/cloudrun/container/placeholder"
+    image              = "us-docker.pkg.dev/cloudrun/container/placeholder"
+    min_instance_count = 1
   }
   corporate-email = {
-    image = "us-docker.pkg.dev/cloudrun/container/placeholder"
+    image              = "us-docker.pkg.dev/cloudrun/container/placeholder"
+    min_instance_count = 1
   }
   income-verification = {
-    image = "us-docker.pkg.dev/cloudrun/container/placeholder"
+    image              = "us-docker.pkg.dev/cloudrun/container/placeholder"
+    min_instance_count = 1
   }
 }
 

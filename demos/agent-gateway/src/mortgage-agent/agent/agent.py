@@ -33,25 +33,39 @@ logger = logging.getLogger(__name__)
 # up without re-querying the registry.
 DISCOVERED_MCP_SERVERS: list[dict[str, Any]] = []
 
-_INSTRUCTION = """You are a mortgage underwriting assistant. You help loan officers process
+# Per-service prose, keyed by registry displayName. Entries here get rendered
+# into the instruction's MCP services block alongside each service's live
+# tool_name_prefix. Services discovered without a matching entry render with
+# the prefix only — still functional, just less descriptive.
+_SERVICE_DESCRIPTIONS: dict[str, str] = {
+    "legacy-dms": (
+        "the legacy document management system. Use to fetch tax returns, pay stubs, "
+        "bank statements, and other applicant documents."
+    ),
+    "corporate-email": (
+        "the corporate communications system. Use to read the corporate inbox. "
+        "Write operations like sending emails may be restricted by the "
+        "authorization gateway."
+    ),
+    "income-verification": (
+        "a third-party income verification vendor. Use to verify reported income "
+        "against employer records and tax filings."
+    ),
+}
+
+# Template formatted at agent build time. The {mcp_services_doc} placeholder is
+# filled from the live registry response so prefixes always match what ADK
+# actually wired up — the LLM can't hallucinate a prefix it never sees.
+_INSTRUCTION_TEMPLATE = """You are a mortgage underwriting assistant. You help loan officers process
 mortgage applications by retrieving documents, verifying income, and communicating results.
 
 You connect to backend systems through an Agent Gateway. The set of available tools is
-discovered from the Agent Registry at startup and can change between deployments. Tool
-names are prefixed by service (e.g. `dms_`, `income_`, `email_`).
+discovered from the Agent Registry at startup and can change between deployments. Each
+MCP service contributes tools with a service-specific prefix; only call tools whose
+prefix appears in the list below.
 
-**Document Management (dms_*):**
-Tools prefixed with `dms_` connect to the legacy document management system.
-Use these to fetch tax returns, pay stubs, bank statements, and other applicant documents.
-
-**Income Verification (income_*):**
-Tools prefixed with `income_` connect to a third-party income verification vendor.
-Use these to verify reported income against employer records and tax filings.
-
-**Corporate Email (email_*):**
-Tools prefixed with `email_` connect to the corporate communications system.
-Use `email_read_email` to read the corporate inbox (read-only).
-Note: Write operations like sending emails may be restricted by the authorization gateway.
+**MCP services discovered from the registry:**
+{mcp_services_doc}
 
 **Workflow:**
 1. Fetch the applicant's tax documents using the document management tools.
@@ -70,6 +84,20 @@ exactly as returned by the tool (e.g. "[US_SOCIAL_SECURITY_NUMBER]"). Never omit
 You also have utility tools:
 - get_current_time: Returns the current time in any timezone.
 - list_mcp_connections: Shows which MCP servers were discovered from the registry."""
+
+
+def _render_mcp_services_doc() -> str:
+    """Render the per-service block from the live DISCOVERED_MCP_SERVERS list."""
+    if not DISCOVERED_MCP_SERVERS:
+        return "_(no MCP services discovered — only utility tools are available)_"
+    lines: list[str] = []
+    for entry in DISCOVERED_MCP_SERVERS:
+        prefix = entry.get("tool_name_prefix") or "(none)"
+        name = entry.get("name") or entry.get("resource_name") or "?"
+        desc = _SERVICE_DESCRIPTIONS.get(name)
+        suffix = f" — connects to {desc}" if desc else ""
+        lines.append(f"- **{name}** (tools prefixed `{prefix}_*`){suffix}")
+    return "\n".join(lines)
 
 
 def _find_http_status_error(exc: BaseException, status_code: int) -> bool:
@@ -213,7 +241,13 @@ def _discover_mcp_toolsets() -> list:
         except Exception:
             logger.exception("Failed to build toolset for MCP server %s", name)
             continue
-        resolved_url = getattr(getattr(toolset, "_connection_params", None), "url", None)
+        # ADK's StreamableHTTPConnectionParams default is 5s, which is shorter
+        # than a Cloud Run cold start when min_instance_count=0. Survive a
+        # restart/scale-out even when an instance happens to be cold.
+        conn_params = getattr(toolset, "_connection_params", None)
+        if conn_params is not None and hasattr(conn_params, "timeout"):
+            conn_params.timeout = 30.0
+        resolved_url = getattr(conn_params, "url", None)
         logger.info(
             "  built toolset: server=%s displayName=%r prefix=%s resolved_url=%s",
             name,
@@ -272,6 +306,8 @@ def _build_agent():
     ]
     _tools.extend(_discover_mcp_toolsets())
 
+    instruction = _INSTRUCTION_TEMPLATE.format(mcp_services_doc=_render_mcp_services_doc())
+
     return _PickleSafeAgent(
         model=os.environ.get("MODEL_NAME", "gemini-3.1-flash-lite-preview"),
         name="mortgage_assistant_agent",
@@ -279,7 +315,7 @@ def _build_agent():
             "A mortgage underwriting assistant that connects to legacy document management, "
             "income verification, and corporate email systems through an Agent Gateway."
         ),
-        instruction=_INSTRUCTION,
+        instruction=instruction,
         tools=_tools,
         on_tool_error_callback=_handle_tool_error,
     )

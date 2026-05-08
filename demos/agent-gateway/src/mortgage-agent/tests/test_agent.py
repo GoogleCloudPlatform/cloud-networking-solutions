@@ -16,11 +16,17 @@
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import httpx
 
-from agent.agent import _find_http_status_error, _handle_tool_error
+from agent import agent as agent_module
+from agent.agent import (
+    _discover_mcp_toolsets,
+    _find_http_status_error,
+    _handle_tool_error,
+    _render_mcp_services_doc,
+)
 
 
 def _make_http_status_error(status_code: int) -> httpx.HTTPStatusError:
@@ -89,3 +95,90 @@ class TestHandleToolError:
         error = RuntimeError("something broke")
         result = _handle_tool_error(tool, {}, MagicMock(), error)
         assert result is None
+
+
+class TestInstructionRendering:
+    """The instruction must reflect the live registry prefixes, not hardcoded ones."""
+
+    _DISCOVERED = [
+        {"name": "legacy-dms", "tool_name_prefix": "legacy_dms"},
+        {"name": "corporate-email", "tool_name_prefix": "corporate_email"},
+        {"name": "income-verification", "tool_name_prefix": "income_verification"},
+    ]
+
+    def test_render_includes_live_prefixes_and_descriptions(self):
+        with patch.object(agent_module, "DISCOVERED_MCP_SERVERS", self._DISCOVERED):
+            doc = _render_mcp_services_doc()
+        assert "`legacy_dms_*`" in doc
+        assert "`corporate_email_*`" in doc
+        assert "`income_verification_*`" in doc
+        # Descriptions for known services come through.
+        assert "legacy document management system" in doc
+        assert "corporate communications system" in doc
+        assert "third-party income verification vendor" in doc
+
+    def test_render_handles_empty_discovery(self):
+        with patch.object(agent_module, "DISCOVERED_MCP_SERVERS", []):
+            doc = _render_mcp_services_doc()
+        assert "no MCP services discovered" in doc
+
+    def test_render_handles_unknown_service(self):
+        with patch.object(
+            agent_module,
+            "DISCOVERED_MCP_SERVERS",
+            [{"name": "future-service", "tool_name_prefix": "future_service"}],
+        ):
+            doc = _render_mcp_services_doc()
+        assert "**future-service** (tools prefixed `future_service_*`)" in doc
+        # No description prose appended for unknown services.
+        assert "connects to" not in doc
+
+    def test_built_agent_instruction_contains_live_prefixes(self):
+        with (
+            patch.object(agent_module, "_discover_mcp_toolsets", return_value=[]),
+            patch.object(agent_module, "DISCOVERED_MCP_SERVERS", self._DISCOVERED),
+        ):
+            built = agent_module._build_agent()
+        instruction = built.instruction
+        # New prefixes present.
+        assert "`legacy_dms_*`" in instruction
+        assert "`corporate_email_*`" in instruction
+        assert "`income_verification_*`" in instruction
+        # Stale hardcoded prefixes are gone.
+        assert "`dms_*`" not in instruction
+        assert "`email_*`" not in instruction
+        assert "`income_*`" not in instruction
+
+
+class TestConnectionTimeoutOverride:
+    """ADK's 5s default trips on Cloud Run cold starts; we override it to 30s."""
+
+    def test_discover_overrides_toolset_timeout(self, monkeypatch):
+        monkeypatch.setenv("MCP_REGISTRY_PROJECT", "test-project")
+        monkeypatch.setenv("MCP_REGISTRY_LOCATION", "us-central1")
+        monkeypatch.delenv("MCP_REGISTRY_FILTER", raising=False)
+        monkeypatch.delenv("MCP_REGISTRY_ENDPOINT", raising=False)
+
+        # Connection params object whose timeout we expect to be mutated.
+        conn_params = MagicMock()
+        conn_params.timeout = 5.0
+        conn_params.url = "https://x.example/mcp"
+
+        toolset = MagicMock()
+        toolset._connection_params = conn_params
+        toolset.tool_name_prefix = "x"
+
+        registry_instance = MagicMock()
+        registry_instance.list_mcp_servers.return_value = {
+            "mcpServers": [{"name": "projects/p/locations/l/mcpServers/x", "displayName": "x"}]
+        }
+        registry_instance.get_mcp_toolset.return_value = toolset
+
+        with patch(
+            "google.adk.integrations.agent_registry.AgentRegistry",
+            return_value=registry_instance,
+        ):
+            result = _discover_mcp_toolsets()
+
+        assert result == [toolset]
+        assert conn_params.timeout == 30.0
