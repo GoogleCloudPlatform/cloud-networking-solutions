@@ -26,8 +26,8 @@ organization_id = "123456789012"
 # Members granted demo-wide roles
 platform_admin_members = ["user:admin@example.com"]
 
-# IAP Enforcement Mode ("ENFORCED" or null)
-agent_gateway_iap_iam_enforcement_mode = "ENFORCED"
+# IAP Enforcement Mode ("DRY_RUN" or null)
+agent_gateway_iap_iam_enforcement_mode = "DRY_RUN"
 
 
 # ##############################################################################
