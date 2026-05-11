@@ -89,7 +89,7 @@ locals {
 # ==============================================================================
 
 module "apigee" {
-  source     = "github.com/GoogleCloudPlatform/cloud-foundation-fabric//modules/apigee?ref=v53.0.0"
+  source     = "github.com/GoogleCloudPlatform/cloud-foundation-fabric//modules/apigee?ref=v53.1.0"
   project_id = var.project_id
 
   organization = {

@@ -30,7 +30,7 @@
 
 # GCS Bucket for model storage
 module "model_storage_bucket" {
-  source        = "github.com/GoogleCloudPlatform/cloud-foundation-fabric//modules/gcs?ref=v53.0.0"
+  source        = "github.com/GoogleCloudPlatform/cloud-foundation-fabric//modules/gcs?ref=v53.1.0"
   project_id    = var.project_id
   name          = "${var.project_id}-model-storage"
   location      = var.region

@@ -43,7 +43,7 @@ data "google_compute_zones" "available" {
 
 # VPC Network
 module "vpc" {
-  source     = "github.com/GoogleCloudPlatform/cloud-foundation-fabric//modules/net-vpc?ref=v53.0.0"
+  source     = "github.com/GoogleCloudPlatform/cloud-foundation-fabric//modules/net-vpc?ref=v53.1.0"
   project_id = var.project_id
   name       = var.vpc_name
 
