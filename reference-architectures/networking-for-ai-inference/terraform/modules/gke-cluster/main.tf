@@ -36,7 +36,7 @@
  */
 
 module "gke" {
-  source              = "github.com/GoogleCloudPlatform/cloud-foundation-fabric//modules/gke-cluster-standard?ref=v53.0.0"
+  source              = "github.com/GoogleCloudPlatform/cloud-foundation-fabric//modules/gke-cluster-standard?ref=v53.1.0"
   project_id          = var.project_id
   name                = var.name
   location            = var.region

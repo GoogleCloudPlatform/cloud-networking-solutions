@@ -43,7 +43,7 @@ locals {
 
 # Regional DNS Authorizations (no map needed for regional gateways)
 module "certificate_manager_regional" {
-  source     = "github.com/GoogleCloudPlatform/cloud-foundation-fabric//modules/certificate-manager?ref=v53.0.0"
+  source     = "github.com/GoogleCloudPlatform/cloud-foundation-fabric//modules/certificate-manager?ref=v53.1.0"
   project_id = var.project_id
 
   count = var.enable_certificate_manager && var.dns_zone_domain != null && var.gateway_scope == "regional" ? 1 : 0

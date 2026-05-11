@@ -294,7 +294,7 @@ resource "google_project_iam_member" "custom_metrics_adapter_monitoring_viewer" 
 
 # Artifact Registry for Docker images
 module "artifact_registry" {
-  source     = "github.com/GoogleCloudPlatform/cloud-foundation-fabric//modules/artifact-registry?ref=v53.0.0"
+  source     = "github.com/GoogleCloudPlatform/cloud-foundation-fabric//modules/artifact-registry?ref=v53.1.0"
   project_id = var.project_id
   location   = var.region
   name       = var.artifact_registry_name
