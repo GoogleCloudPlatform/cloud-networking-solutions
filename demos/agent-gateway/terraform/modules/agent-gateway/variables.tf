@@ -76,7 +76,7 @@ variable "model_armor_authz_hosts" {
 variable "authz_extension_timeout" {
   description = "gRPC call timeout for the authz extensions (string format e.g. \"1s\")"
   type        = string
-  default     = "1s"
+  default     = "5s"
 }
 
 variable "authz_extension_fail_open" {
