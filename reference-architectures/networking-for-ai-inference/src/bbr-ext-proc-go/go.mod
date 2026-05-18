@@ -5,7 +5,7 @@ go 1.24.0
 toolchain go1.24.13
 
 require (
-	github.com/envoyproxy/go-control-plane/envoy v1.36.0
+	github.com/envoyproxy/go-control-plane/envoy v1.37.0
 	github.com/google/go-cmp v0.7.0
 	google.golang.org/grpc v1.80.0
 	google.golang.org/protobuf v1.36.11
