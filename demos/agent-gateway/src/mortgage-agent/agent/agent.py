@@ -137,6 +137,16 @@ def _build_impersonation_factory(target_url: str, target_sa_email: str):
 # up without re-querying the registry.
 DISCOVERED_MCP_SERVERS: list[dict[str, Any]] = []
 
+# Populated once per process by _discover_mcp_toolsets(). Reused on every
+# subsequent call so Reasoning Engine unpickling (which re-runs
+# _PickleSafeAgent.__reduce__ -> _build_agent -> _discover_mcp_toolsets) does
+# not construct a second MCPSessionManager in the same process, which trips
+# "Context has already been used to create a Connection" inside ADK/anyio.
+# Empty results are cached too so a failing discovery is not retried (and
+# re-warned) on every unpickle. Membership is therefore frozen per worker
+# process; new MCP servers require a redeploy or worker restart.
+_CACHED_TOOLSETS: list | None = None
+
 # Per-service prose, keyed by registry displayName. Entries here get rendered
 # into the instruction's MCP services block alongside each service's live
 # tool_name_prefix. Services discovered without a matching entry render with
@@ -287,6 +297,14 @@ def _discover_mcp_toolsets() -> list:
     aborting agent startup, so the agent still boots (with utility tools only)
     if the registry is unreachable.
     """
+    global _CACHED_TOOLSETS
+    if _CACHED_TOOLSETS is not None:
+        logger.debug(
+            "Reusing %d cached MCP toolset(s); skipping registry discovery.",
+            len(_CACHED_TOOLSETS),
+        )
+        return _CACHED_TOOLSETS
+
     DISCOVERED_MCP_SERVERS.clear()
 
     project = os.environ.get("MCP_REGISTRY_PROJECT") or os.environ.get("GOOGLE_CLOUD_PROJECT")
@@ -305,7 +323,8 @@ def _discover_mcp_toolsets() -> list:
             project,
             location,
         )
-        return []
+        _CACHED_TOOLSETS = []
+        return _CACHED_TOOLSETS
 
     filter_str = os.environ.get("MCP_REGISTRY_FILTER")
     endpoint = os.environ.get("MCP_REGISTRY_ENDPOINT")
@@ -331,7 +350,8 @@ def _discover_mcp_toolsets() -> list:
             "is missing a transitive dep (typically a2a-sdk).",
             e,
         )
-        return []
+        _CACHED_TOOLSETS = []
+        return _CACHED_TOOLSETS
 
     try:
         if endpoint:
@@ -349,7 +369,8 @@ def _discover_mcp_toolsets() -> list:
             location,
             effective_endpoint,
         )
-        return []
+        _CACHED_TOOLSETS = []
+        return _CACHED_TOOLSETS
 
     raw_servers = response.get("mcpServers", [])
     effective_endpoint = endpoint or getattr(_ar_module, "AGENT_REGISTRY_BASE_URL", "<adk-default>")
@@ -434,7 +455,8 @@ def _discover_mcp_toolsets() -> list:
             effective_endpoint,
         )
 
-    return toolsets
+    _CACHED_TOOLSETS = toolsets
+    return _CACHED_TOOLSETS
 
 
 class _PickleSafeAgent(Agent):

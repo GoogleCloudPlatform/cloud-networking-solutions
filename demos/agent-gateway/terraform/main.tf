@@ -141,7 +141,7 @@ resource "google_artifact_registry_repository" "registry" {
 # Cloud Build — Source bucket for regional Cloud Build submissions
 resource "google_storage_bucket" "cloudbuild" {
   project                     = var.project_id
-  name                        = "${var.project_id}_cloudbuild"
+  name                        = coalesce(var.cloudbuild_bucket_name, "${var.project_id}_cloudbuild")
   location                    = var.region
   uniform_bucket_level_access = true
   force_destroy               = false

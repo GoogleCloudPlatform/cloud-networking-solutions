@@ -528,17 +528,27 @@ def main() -> None:
         deploy_config = dict(
             staging_bucket=staging_bucket,
             requirements=[
-                "google-cloud-aiplatform[adk,agent_engines]",
-                # --- BEGIN TEMPORARY OVERRIDE: track adk-python main ---
-                # Remove this line (and restore the PyPI google-adk dep) once
-                # the upstream fix we need lands in a tagged release.
+                # Upper-bound pin keeps the container on a release where
+                # `vertexai.agent_engines.AdkApp` (the public import used by
+                # agent/otel_setup.py) resolves the same class the operator
+                # pickled. Unpinned, PyPI advanced to 1.153.1 which had already
+                # removed the older `vertexai.agent_engines.templates.adk` path
+                # and broke unpickle in the container. The `[adk]` extra is
+                # omitted because google-adk is pinned explicitly below; the
+                # extra would just re-declare the same dep with a looser
+                # range. Keep aligned with pyproject.toml.
+                "google-cloud-aiplatform[agent_engines]>=1.149.0,<1.154.0",
+                # Pin google-adk to a tagged PyPI release (was previously
+                # tracking adk-python@main, which started publishing 2.0.0b1
+                # and conflicted with google-cloud-aiplatform's [adk] extra).
                 # The [a2a,agent-identity] extras pull a2a-sdk and
-                # google-cloud-iamconnectorcredentials at versions google-adk
-                # itself requires — without them registry discovery fails on
-                # `cannot import name 'TransportProtocol'` (a2a) or
+                # google-cloud-iamconnectorcredentials at the versions
+                # google-adk itself requires — without them registry
+                # discovery fails on `cannot import name 'TransportProtocol'`
+                # (a2a) or
                 # `No module named google.cloud.iamconnectorcredentials_v1alpha`.
-                "google-adk[a2a,agent-identity] @ git+https://github.com/google/adk-python.git@main",
-                # --- END TEMPORARY OVERRIDE ---
+                # Keep aligned with pyproject.toml.
+                "google-adk[a2a,agent-identity]==1.34.0",
                 "google-auth>=2.0",
                 "cloudpickle",
                 "pydantic",

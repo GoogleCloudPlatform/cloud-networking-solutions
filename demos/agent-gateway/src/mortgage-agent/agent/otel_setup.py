@@ -16,7 +16,7 @@
 
 from __future__ import annotations
 
-from vertexai.agent_engines.templates.adk import AdkApp
+from vertexai.agent_engines import AdkApp
 
 
 class InstrumentedAdkApp(AdkApp):
