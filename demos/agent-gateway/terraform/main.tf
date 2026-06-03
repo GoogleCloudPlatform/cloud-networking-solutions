@@ -357,10 +357,11 @@ resource "google_dns_record_set" "apigee_northbound" {
 module "mcp_services" {
   source = "./modules/mcp-cloud-run"
 
-  project_id         = var.project_id
-  region             = var.region
-  services           = var.mcp_services
-  private_networking = var.enable_cloud_run_private_networking
+  project_id              = var.project_id
+  region                  = var.region
+  services                = var.mcp_services
+  private_networking      = var.enable_cloud_run_private_networking
+  mcp_internal_dns_domain = local.mcp_internal_dns_domain_or_null
   # Restricts roles/run.invoker to the agent-mcp-invoker SA. Null when
   # agent_engine is disabled, in which case mcp-cloud-run skips the binding
   # and Cloud Run is unreachable until invoker is granted out-of-band.

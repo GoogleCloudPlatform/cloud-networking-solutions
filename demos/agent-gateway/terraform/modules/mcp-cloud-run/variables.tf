@@ -59,3 +59,9 @@ variable "invoker_sa_email" {
   type        = string
   default     = null
 }
+
+variable "mcp_internal_dns_domain" {
+  description = "Internal DNS domain fronting the MCP services behind the internal LB (e.g. \"mcp.example.com.\"). When set and private_networking is true, each service registers `https://<name>.<domain>` as a Cloud Run custom audience so it accepts the OIDC token the agent mints for the LB-fronted host (the agent's audience is the request origin, not the *.run.app URL). Null on the public *.run.app path."
+  type        = string
+  default     = null
+}

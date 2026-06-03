@@ -62,6 +62,15 @@ resource "google_cloud_run_v2_service" "mcp" {
   ingress             = var.private_networking ? "INGRESS_TRAFFIC_INTERNAL_LOAD_BALANCER" : "INGRESS_TRAFFIC_ALL"
   deletion_protection = false
 
+  # On the private path the agent reaches each service via the internal LB at
+  # `https://<name>.<domain>` and mints an OIDC token scoped to that origin.
+  # Cloud Run only accepts tokens whose `aud` matches a *.run.app URL unless
+  # the custom host is registered here, so without this the LB-fronted calls
+  # return 401. Null on the public path leaves the default *.run.app audience.
+  custom_audiences = var.private_networking && var.mcp_internal_dns_domain != null ? [
+    "https://${each.key}.${trimsuffix(var.mcp_internal_dns_domain, ".")}"
+  ] : null
+
   template {
     service_account = google_service_account.mcp[each.key].email
 
