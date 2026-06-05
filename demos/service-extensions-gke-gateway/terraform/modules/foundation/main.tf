@@ -36,7 +36,7 @@
  */
 
 module "project" {
-  source        = "github.com/GoogleCloudPlatform/cloud-foundation-fabric//modules/project?ref=v53.0.0"
+  source        = "github.com/GoogleCloudPlatform/cloud-foundation-fabric//modules/project?ref=v53.1.0"
   name          = var.project_id
   project_reuse = {} # Use existing project
 

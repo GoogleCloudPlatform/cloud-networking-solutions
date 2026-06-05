@@ -43,7 +43,7 @@ data "google_compute_zones" "available" {
 
 # VPC Network
 module "vpc" {
-  source     = "github.com/GoogleCloudPlatform/cloud-foundation-fabric//modules/net-vpc?ref=v53.0.0"
+  source     = "github.com/GoogleCloudPlatform/cloud-foundation-fabric//modules/net-vpc?ref=v53.1.0"
   project_id = var.project_id
   name       = var.vpc_name
 
@@ -121,7 +121,7 @@ resource "google_compute_address" "internal_gateway" {
 # This zone is consumed by Apigee via DNS peering, not by VPC workloads
 module "apigee_internal_dns_zone" {
   count      = var.apigee_internal_dns_zone != null ? 1 : 0
-  source     = "github.com/GoogleCloudPlatform/cloud-foundation-fabric//modules/dns?ref=v53.0.0"
+  source     = "github.com/GoogleCloudPlatform/cloud-foundation-fabric//modules/dns?ref=v53.1.0"
   project_id = var.project_id
   name       = var.apigee_internal_dns_zone.name
   zone_config = {
@@ -174,7 +174,7 @@ resource "google_compute_firewall" "psc_interface_allow" {
 # PSC Interface — private DNS zone for DNS peering
 module "psc_interface_dns_zone" {
   count      = var.enable_psc_interface && var.psc_interface_dns_zone != null ? 1 : 0
-  source     = "github.com/GoogleCloudPlatform/cloud-foundation-fabric//modules/dns?ref=v53.0.0"
+  source     = "github.com/GoogleCloudPlatform/cloud-foundation-fabric//modules/dns?ref=v53.1.0"
   project_id = var.project_id
   name       = var.psc_interface_dns_zone.name
   zone_config = {
