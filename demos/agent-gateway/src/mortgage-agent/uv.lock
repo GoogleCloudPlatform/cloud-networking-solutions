@@ -577,7 +577,7 @@ wheels = [
 
 [[package]]
 name = "google-adk"
-version = "1.34.0"
+version = "1.35.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiosqlite" },
@@ -626,9 +626,9 @@ dependencies = [
     { name = "watchdog" },
     { name = "websockets" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/bc/dc/1fec30bdc7b640087ee64dfc69bae4450ef43a1cba688bd9cb99dca6ba67/google_adk-1.34.0.tar.gz", hash = "sha256:bce56f6f8f400dcc83d633190f5f44d27fcb88a515a9556aeeb9ef9cbc896600", size = 2431386, upload-time = "2026-05-18T23:48:00.212Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/3a/a7/8cba69e86af4f25b73f0bd4cbce9b0ca990a6a779cedee9a242264fca259/google_adk-1.35.0.tar.gz", hash = "sha256:c3f36447d29c1a3400ba45b344f232d857db9b18d1224517a00b267da1f51dff", size = 2432700, upload-time = "2026-06-10T05:32:34.778Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/b1/86/7d9e222e1ee6dd9719844d5fad4ba25c9ec8c4191ee2644a81bd04749c6b/google_adk-1.34.0-py3-none-any.whl", hash = "sha256:928340bc4b6bd3de8bfa780d3971d4c1bb10e48a52fb66875f273ba42d72b669", size = 2876260, upload-time = "2026-05-18T23:48:02.296Z" },
+    { url = "https://files.pythonhosted.org/packages/2b/9a/dc5192a79bea70730c9261b8ca54ee4103265a260444d3bffdd2eab47876/google_adk-1.35.0-py3-none-any.whl", hash = "sha256:f4c10f86c37e4fba157868d6884d4493bbb88a53fea00004d900dc03a3347f85", size = 2877569, upload-time = "2026-06-10T05:32:37.085Z" },
 ]
 
 [package.optional-dependencies]
@@ -1605,7 +1605,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "google-adk", extras = ["a2a", "agent-identity"], specifier = "==1.34.0" },
+    { name = "google-adk", extras = ["a2a", "agent-identity"], specifier = "==1.35.0" },
     { name = "google-cloud-aiplatform", specifier = ">=1.149.0,<1.154.0" },
     { name = "opentelemetry-instrumentation-fastapi" },
     { name = "opentelemetry-instrumentation-google-genai" },
