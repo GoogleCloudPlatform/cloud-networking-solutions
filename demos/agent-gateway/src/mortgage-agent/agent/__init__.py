@@ -17,6 +17,16 @@ import sys
 
 sys.path.insert(0, os.path.dirname(__file__))
 
+# Prevent urllib3 from using PyOpenSSL, which contains a bug causing
+# "ValueError: Context has already been used to create a Connection"
+# when OTEL span exporter attempts to push telemetry after an HTTP error.
+try:
+    import urllib3.contrib.pyopenssl
+
+    urllib3.contrib.pyopenssl.extract_from_urllib3()
+except Exception:
+    pass
+
 import google.auth
 
 from . import agent  # noqa: F401

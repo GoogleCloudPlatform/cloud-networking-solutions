@@ -565,6 +565,9 @@ def main() -> None:
                 ],
             },
             env_vars={
+                # Make denied MCP tool calls (gateway 403) fail fast instead of
+                # hanging the turn as a broken-stream TaskGroup/TimeoutError.
+                "ADK_ENABLE_MCP_GRACEFUL_ERROR_HANDLING": "true",
                 "GOOGLE_CLOUD_AGENT_ENGINE_ENABLE_TELEMETRY": "true",
                 "GOOGLE_API_PREVENT_AGENT_TOKEN_SHARING_FOR_GCP_SERVICES": "false",
                 "OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT": "true",

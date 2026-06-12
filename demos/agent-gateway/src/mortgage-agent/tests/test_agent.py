@@ -80,16 +80,16 @@ def _make_tool_context(state: dict | None = None) -> MagicMock:
 
 
 class TestHandleToolError:
-    def test_403_returns_friendly_message(self):
+    def test_403_returns_block_message(self):
         tool = MagicMock()
         tool.name = "send_email"
         error = _make_http_status_error(403)
         result = _handle_tool_error(tool, {}, _make_tool_context(), error)
         assert result is not None
-        assert "denied" in result["error"]
         assert "send_email" in result["error"]
-        # First attempt should not be the hard-stop wording.
-        assert "Do not call this tool again" not in result["error"]
+        assert "authorization policies" in result["error"]
+        # No retries: the very first 403 is the hard-stop message.
+        assert "Do not call this tool again" in result["error"]
 
     def test_non_403_returns_none(self):
         tool = MagicMock()
@@ -105,14 +105,15 @@ class TestHandleToolError:
         result = _handle_tool_error(tool, {}, _make_tool_context(), error)
         assert result is None
 
-    def test_403_second_attempt_returns_hard_stop(self):
+    def test_403_blocks_immediately_and_counts_attempts(self):
         tool = MagicMock()
         tool.name = "send_email"
         error = _make_http_status_error(403)
         ctx = _make_tool_context()
 
         first = _handle_tool_error(tool, {}, ctx, error)
-        assert "Do not call this tool again" not in first["error"]
+        assert "Do not call this tool again" in first["error"]
+        assert ctx.state["_denied_mcp_tools"]["send_email"] == 1
 
         second = _handle_tool_error(tool, {}, ctx, error)
         assert "Do not call this tool again" in second["error"]
@@ -126,15 +127,15 @@ class TestHandleToolError:
         error = _make_http_status_error(403)
         ctx = _make_tool_context()
 
-        # Tool A hits the cap.
+        # Tool A is called twice; its counter is independent of tool B's.
         _handle_tool_error(tool_a, {}, ctx, error)
         _handle_tool_error(tool_a, {}, ctx, error)
         assert ctx.state["_denied_mcp_tools"]["send_email"] == 2
 
-        # Tool B's first attempt is still the friendly (non-hard-stop) message.
+        # Tool B's first 403 blocks immediately with its own counter.
         result = _handle_tool_error(tool_b, {}, ctx, error)
-        assert "Do not call this tool again" not in result["error"]
-        assert "denied" in result["error"]
+        assert "Do not call this tool again" in result["error"]
+        assert "authorization policies" in result["error"]
         assert ctx.state["_denied_mcp_tools"]["read_email"] == 1
 
 

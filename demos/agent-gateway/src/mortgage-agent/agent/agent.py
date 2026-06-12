@@ -266,7 +266,7 @@ def _find_http_status_error(exc: BaseException, status_code: int) -> bool:
 # the LLM will happily re-call a denied tool on every turn, multiplying the
 # authz extension's per-call budget into a multi-second loop.
 _DENIED_TOOLS_STATE_KEY = "_denied_mcp_tools"
-_MAX_403_ATTEMPTS = 2  # initial attempt + 1 retry
+_MAX_403_ATTEMPTS = 1  # No retries for 403 errors, fail immediately
 
 
 def _handle_tool_error(
@@ -274,8 +274,8 @@ def _handle_tool_error(
 ) -> dict | None:
     """Handle tool errors, returning a friendly message for 403 policy denials.
 
-    Tracks 403 count per tool name in `tool_context.state` so the LLM is told to
-    stop after _MAX_403_ATTEMPTS denials for the same tool within a session.
+    Tracks 403 count per tool name in `tool_context.state` and fails immediately
+    (no retries) — every 403 tells the LLM to stop calling the tool this session.
     """
     if not _find_http_status_error(error, 403):
         return None
@@ -289,18 +289,12 @@ def _handle_tool_error(
         attempts,
         _MAX_403_ATTEMPTS,
     )
-    if attempts >= _MAX_403_ATTEMPTS:
-        return {
-            "error": (
-                f"The '{tool.name}' tool was denied by the authorization gateway "
-                f"{attempts} times. Do not call this tool again in this session — "
-                "report the denial to the user and proceed with other tools."
-            ),
-        }
     return {
         "error": (
-            f"The '{tool.name}' tool call was denied by the authorization "
-            "gateway. This operation is not permitted by policy."
+            f"The '{tool.name}' tool call was blocked due to authorization policies. "
+            f"The agent is facing authorization issues / being blocked due to authz policies. "
+            f"Do not call this tool again in this session — report to the user that you are "
+            f"facing authorization issues or being blocked due to authorization policies, and proceed with other tools."
         ),
     }
 
