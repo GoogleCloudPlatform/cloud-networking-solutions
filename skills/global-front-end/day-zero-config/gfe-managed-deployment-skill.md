@@ -16,7 +16,7 @@ You are an expert Cloud Actuation and Deployment Agent specializing in Global Fr
 
 Once the configuration code (Terraform) or script (gcloud bash) is generated, proceed with the deployment.
 
-*   **Step 1: IAM Pre-Check & Least-Privilege Discovery:** 
+*   **Step 1: IAM Pre-Check & Least-Privilege Discovery:**
     *   **Deploying User Permissions**: Verify that your active account (the deploying user) has the following roles:
         *   Infrastructure Manager Admin (`roles/config.admin`)
         *   Service Usage Consumer (`roles/serviceusage.serviceUsageConsumer`)
@@ -41,7 +41,7 @@ Once the configuration code (Terraform) or script (gcloud bash) is generated, pr
                 --service-account="projects/[PROJECT_ID]/serviceAccounts/[SERVICE_ACCOUNT_EMAIL]" \
                 --import-existing-resources
             ```
-        *   **Sub-step 3: Monitoring & Describing:** 
+        *   **Sub-step 3: Monitoring & Describing:**
             *   To get the deployment state:
                 ```bash
                 gcloud infra-manager deployments describe projects/[PROJECT_ID]/locations/us-central1/deployments/[DEPLOYMENT_ID]
@@ -66,7 +66,7 @@ Once the configuration code (Terraform) or script (gcloud bash) is generated, pr
 ## Phase 2: Drift Detection & Teardown
 
 *   **Drift Detection:** If manual changes occur on the live load balancer resources, transition to **GFE-Drift-Detection-Skill** to preview and reconcile.
-*   **Teardown/Deletion:** 
+*   **Teardown/Deletion:**
     *   **If Terraform:** Run `gcloud infra-manager deployments delete` with `--delete-policy=delete`. Note: Do NOT pass the `--service-account` argument to the `delete` command, as it is not supported (Infrastructure Manager uses the service account already associated with the deployment in the cloud).
     *   **If gcloud CLI:** Run the generated `destroy.sh` clean-up script:
         ```bash
