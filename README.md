@@ -22,6 +22,10 @@ Contains smaller, focused demonstrations of specific networking features or inte
 *   **[Service Extensions GKE Gateway](demos/service-extensions-gke-gateway)**: Shows how to use Service Extensions with GKE Gateway to customize traffic management.
 *   **[Agent Gateway](demos/agent-gateway)**: Demonstrates secure cross-cloud agentic deployments with an ADK agent on Agent Runtime, MCP servers behind an internal Gateway, PSC connectivity, and Model Armor guardrails.
 
+## [Codelabs](codelabs)
+
+Contains code samples and snippets intended for use with hands-on tutorials published on the [Google Developers Codelabs](https://codelabs.developers.google.com/) platform. See the [Codelabs About Page](codelabs/about.md) for more details on the available code.
+
 # Running samples
 
 Each project within this repo typically holds a self-contained sample, implemented in [Terraform](https://www.terraform.io/).

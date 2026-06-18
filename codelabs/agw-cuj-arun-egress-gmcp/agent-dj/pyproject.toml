@@ -1,0 +1,16 @@
+[project]
+name = "agent-dj"
+version = "0.1.0"
+description = "Music assistant agent deployed on Vertex AI Agent Engine using BigQuery MCP tools"
+requires-python = ">=3.11,<3.13"
+dependencies = [
+    "google-adk==1.31.1",
+    "google-genai",
+    "pydantic",
+    "google-cloud-bigquery",
+    "google-cloud-aiplatform[agent_engines,adk]>=1.40.0",
+    "cloudpickle>=3.0.0",
+    "opentelemetry-instrumentation-httpx",
+    "opentelemetry-instrumentation-grpc",
+    "opentelemetry-instrumentation-google-genai",
+]
