@@ -75,7 +75,9 @@ module "gke" {
 
   # Access configuration
   access_config = {
-    dns_access    = var.enable_dns_access
+    dns_access    = {
+      allow_external_traffic = var.enable_dns_access
+    }
     ip_access     = var.authorized_networks
     private_nodes = var.private_nodes
   }
