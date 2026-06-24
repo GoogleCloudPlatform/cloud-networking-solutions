@@ -713,9 +713,10 @@ wheels = [
 
 [[package]]
 name = "google-cloud-aiplatform"
-version = "1.149.0"
+version = "1.158.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
+    { name = "certifi" },
     { name = "docstring-parser" },
     { name = "google-api-core", extra = ["grpc"] },
     { name = "google-auth" },
@@ -729,9 +730,9 @@ dependencies = [
     { name = "pydantic" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/42/2c/fba4adc56f74c0ee0fbd91a39d414ca2c3588dd8b71f9be8a507015ca886/google_cloud_aiplatform-1.149.0.tar.gz", hash = "sha256:a4d73485bf1d727a9e1bbbd13d08d7031490686bbf7d125eb905c1a6c1559a35", size = 10451466, upload-time = "2026-04-27T23:11:54.513Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/d0/74/71440b7793068d8411f096712d6274a64a42f44bd01a11d67d8cbbd27b54/google_cloud_aiplatform-1.158.0.tar.gz", hash = "sha256:85b6bedc3823824617db1ea83e07fa07f00681d7ab63c42cdc584066a844737b", size = 11128785, upload-time = "2026-06-16T23:08:45.036Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/bf/a0/27719ba23967ef62e52a1d54e013e0fc174bdab8dd84fb300bab9bf0d4a3/google_cloud_aiplatform-1.149.0-py2.py3-none-any.whl", hash = "sha256:e6b5299fa5d303e971cb29a19f03fdbb7b1e3b9d2faa3a788ca933341fba2f2e", size = 8570410, upload-time = "2026-04-27T23:11:50.495Z" },
+    { url = "https://files.pythonhosted.org/packages/a7/1c/4273f7a6eb59214a94575d34a3603b37519217af7dfc1bcd2387daed0219/google_cloud_aiplatform-1.158.0-py2.py3-none-any.whl", hash = "sha256:8ed07f866fe9a49c31f0ba9fc8049c5cd5b47ff7f833ca3d9d8ce480f871d715", size = 9343147, upload-time = "2026-06-16T23:08:41.398Z" },
 ]
 
 [package.optional-dependencies]
@@ -1606,7 +1607,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "google-adk", extras = ["a2a", "agent-identity"], specifier = "==1.34.0" },
-    { name = "google-cloud-aiplatform", specifier = ">=1.149.0,<1.154.0" },
+    { name = "google-cloud-aiplatform", specifier = ">=1.158.0,<1.159.0" },
     { name = "opentelemetry-instrumentation-fastapi" },
     { name = "opentelemetry-instrumentation-google-genai" },
     { name = "opentelemetry-instrumentation-grpc" },
