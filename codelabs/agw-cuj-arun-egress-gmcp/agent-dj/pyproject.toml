@@ -4,7 +4,7 @@ version = "0.1.0"
 description = "Music assistant agent deployed on Vertex AI Agent Engine using BigQuery MCP tools"
 requires-python = ">=3.11,<3.13"
 dependencies = [
-    "google-adk==1.31.1",
+    "google-adk==1.36.0",
     "google-genai",
     "pydantic",
     "google-cloud-bigquery",
