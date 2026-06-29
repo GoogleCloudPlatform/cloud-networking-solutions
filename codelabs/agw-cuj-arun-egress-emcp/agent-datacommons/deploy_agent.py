@@ -62,7 +62,7 @@ def register_to_ge(
     auth_id = f"{agent_name}_{int(time.time() * 1000)}"
     auth_resource_name = f"projects/{project}/locations/global/authorizations/{auth_id}"
     auth_url = f"{base_url}/authorizations?authorizationId={auth_id}"
-    
+
     authorization_uri = (
         "https://accounts.google.com/o/oauth2/v2/auth"
         f"?client_id={oauth_client_id}"
@@ -73,7 +73,7 @@ def register_to_ge(
         "&access_type=offline"
         "&prompt=consent"
     )
-    
+
     auth_body = {
         "displayName": auth_id,
         "serverSideOauth2": {
@@ -157,13 +157,13 @@ def main():
     parser.add_argument("--enable-telemetry", action="store_true", help="Enable native Reasoning Engine telemetry")
     parser.add_argument("--allow-token-sharing", action="store_true", help="Allow agent identity token sharing for GCP services (disables bound token sharing)")
     parser.add_argument("-e", "--env-var", action="append", help="Additional environment variables to pass to deployed engine (format: KEY=VALUE)")
-    
+
     # Gemini Enterprise
     parser.add_argument("--ge-deploy", action="store_true", help="Register with Gemini Enterprise after deploy")
     parser.add_argument("--app-id", help="Gemini Enterprise App ID")
     parser.add_argument("--oauth-client-id", help="OAuth2 client ID")
     parser.add_argument("--oauth-client-secret", help="OAuth2 client secret")
-    
+
     args = parser.parse_args()
 
     if args.ge_deploy:
@@ -196,11 +196,11 @@ def main():
     # Staging Trick: Copy source to a temp directory named 'agent'
     staging_dir = tempfile.mkdtemp(prefix="agent_deploy_")
     original_cwd = os.getcwd()
-    
+
     try:
         src_abs_path = os.path.abspath(args.src_dir)
         agent_dest = os.path.join(staging_dir, "agent")
-        
+
         print(f"Staging agent code from {src_abs_path} to {agent_dest}...")
         shutil.copytree(
             src_abs_path,
@@ -336,10 +336,10 @@ def main():
             tn_value = args.target_network
             if not tn_value.startswith("projects/"):
                 tn_value = f"projects/{network_project}/global/networks/{tn_value}"
-                
+
             if "psc_interface_config" not in deploy_config:
                 deploy_config["psc_interface_config"] = {}
-                
+
             deploy_config["psc_interface_config"]["dns_peering_configs"] = [
                 {
                     "domain": domain,

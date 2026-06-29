@@ -93,10 +93,10 @@ class StatelessHTTPClient:
     async def list_tools(self):
         res = await self._post("tools/list")
         tools_list = res.get("tools", [])
-        
+
         class ToolsResponse:
             tools = [DummyTool(t) for t in tools_list]
-            
+
         return ToolsResponse()
 
     async def call_tool(self, name: str, arguments: dict = None):
@@ -104,14 +104,14 @@ class StatelessHTTPClient:
             "tools/call", {"name": name, "arguments": arguments or {}}
         )
         content = res.get("content", [])
-        
+
         class DummyContent:
             def __init__(self, c):
                 self.text = c.get("text", str(c))
-                
+
         class ResultResponse:
             content = [DummyContent(c) for c in content]
-            
+
         return ResultResponse()
 
 
