@@ -1,0 +1,16 @@
+[project]
+name = "agent-datacommons"
+version = "1.0.3"
+description = "Agent for Data Commons stats deployed on Agent Runtime using public Data Commons MCP tools"
+requires-python = ">=3.11,<3.13"
+dependencies = [
+    "google-adk==1.31.1",
+    "google-genai",
+    "pydantic",
+    "google-cloud-aiplatform[agent_engines,adk]>=1.40.0",
+    "cloudpickle>=3.0.0",
+    "python-dotenv",
+    "opentelemetry-instrumentation-httpx",
+    "opentelemetry-instrumentation-grpc",
+    "opentelemetry-instrumentation-google-genai",
+]
