@@ -11,3 +11,9 @@ The code within the subdirectories is intended to be checked out or downloaded a
 *   **Directory:** [`agw-cuj-arun-egress-gmcp/`](agw-cuj-arun-egress-gmcp/)
 *   **Description:** Implement agent governance with Agent Gateway deployed in agent-to-anywhere (egress) mode to authorize and secure outbound traffic from an Agent Runtime hosted agent accessing the Google Model Context Protocol (MCP) endpoint for BigQuery.
 *   **Published Codelab Link:** [https://codelabs.developers.google.com/agw-cuj-arun-egress-gmcp](https://codelabs.developers.google.com/agw-cuj-arun-egress-gmcp)
+
+### Agent Gateway egress from Agent Runtime to external MCP
+
+*   **Directory:** [`agw-cuj-arun-egress-emcp/`](agw-cuj-arun-egress-emcp/)
+*   **Description:** Implement agent governance with Agent Gateway deployed in agent-to-anywhere (egress) mode to authorize and secure outbound traffic from an Agent Runtime hosted agent accessing an external Model Context Protocol (MCP) endpoint using fine-grained conditional policies.
+*   **Published Codelab Link:** [https://codelabs.developers.google.com/agw-cuj-arun-egress-emcp](https://codelabs.developers.google.com/agw-cuj-arun-egress-emcp)

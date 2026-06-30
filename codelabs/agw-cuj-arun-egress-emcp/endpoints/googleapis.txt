@@ -1,0 +1,35 @@
+# global and locational (by region & multi-region) endpoints
+# {location}-{service}.googleapis.com
+# {location}-{service}.mtls.googleapis.com
+# and
+# {service}.googleapis.com
+# {service}.mtls.googleapis.com
+aiplatform.googleapis.com
+discoveryengine.googleapis.com
+
+# global and locational (by region only) endpoints
+# {location}-{service}.googleapis.com
+# {location}-{service}.mtls.googleapis.com
+# and
+# {service}.googleapis.com
+# {service}.mtls.googleapis.com
+agentregistry.googleapis.com
+
+# global endpoints
+# {service}.googleapis.com
+# {service}.mtls.googleapis.com
+global-discoveryengine.googleapis.com
+cloudresourcemanager.googleapis.com
+logging.googleapis.com
+monitoring.googleapis.com
+oauth2.googleapis.com
+trace.googleapis.com
+telemetry.googleapis.com
+iap.googleapis.com
+bigquery.googleapis.com
+storage.googleapis.com
+
+# regional endpoints
+# {service}.{region}.googleapis.com
+# {service}.{region}.mtls.googleapis.com
+modelarmor.googleapis.com
