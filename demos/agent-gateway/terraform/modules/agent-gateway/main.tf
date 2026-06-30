@@ -173,6 +173,7 @@ resource "google_network_services_authz_extension" "iap" {
 
   metadata = var.iap_iam_enforcement_mode != null ? {
     iamEnforcementMode = var.iap_iam_enforcement_mode
+    iapPolicyVersion = "V1"
   } : null
 }
 
