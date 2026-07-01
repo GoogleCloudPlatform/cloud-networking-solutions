@@ -24,7 +24,8 @@
  * actually evaluates) are issued out-of-band by `scripts/grant_agent_mcp_egress.sh`
  * after each agent deploy.
  *
- * The whole resource family is in beta — pinned via the google-beta provider.
+ * The Agent Gateway resource is GA (uses the default google provider). The authz
+ * service extensions and policies remain beta — pinned via the google-beta provider.
  */
 
 locals {
@@ -58,13 +59,11 @@ resource "google_compute_firewall" "agent_gateway_psc_i" {
   }
 }
 
-# The Agent Gateway itself. Google-managed, MCP, AGENT_TO_ANYWHERE.
+# The Agent Gateway itself. Google-managed, AGENT_TO_ANYWHERE.
 resource "google_network_services_agent_gateway" "this" {
-  provider  = google-beta
-  project   = var.project_id
-  name      = var.name
-  location  = var.region
-  protocols = ["MCP"]
+  project  = var.project_id
+  name     = var.name
+  location = var.region
 
   google_managed {
     governed_access_path = "AGENT_TO_ANYWHERE"
@@ -76,6 +75,18 @@ resource "google_network_services_agent_gateway" "this" {
     egress {
       network_attachment = google_compute_network_attachment.agent_gateway.id
     }
+
+    # DNS peering lets the gateway resolve customer-VPC private DNS zones (e.g.
+    # mcp.agent-gateway.sc-ccn.xyz.) so it can reach upstream MCP servers by
+    # hostname.
+    dynamic "dns_peering_config" {
+      for_each = var.dns_peering_config != null ? [var.dns_peering_config] : []
+      content {
+        domains        = dns_peering_config.value.domains
+        target_project = dns_peering_config.value.target_project
+        target_network = dns_peering_config.value.target_network
+      }
+    }
   }
 }
 
@@ -85,79 +96,6 @@ resource "google_network_services_agent_gateway" "this" {
 resource "time_sleep" "wait_for_gateway" {
   depends_on      = [google_network_services_agent_gateway.this]
   create_duration = "30s"
-}
-
-# Apply network_config.dnsPeeringConfig via REST PATCH. The
-# terraform-provider-google-beta resource schema does not expose this field
-# yet (as of provider v6.x — only network_config.egress is wired up), but the
-# v1beta1 networkservices API accepts it via partial update. Lets the gateway
-# resolve customer-VPC private DNS zones (e.g. mcp.agent-gateway.sc-ccn.xyz.)
-# so it can reach upstream MCP servers by hostname.
-locals {
-  dns_peering_body = var.dns_peering_config != null ? jsonencode({
-    networkConfig = {
-      dnsPeeringConfig = {
-        domains       = var.dns_peering_config.domains
-        targetProject = var.dns_peering_config.target_project
-        targetNetwork = var.dns_peering_config.target_network
-      }
-    }
-  }) : null
-}
-
-resource "terraform_data" "dns_peering" {
-  count = var.dns_peering_config != null ? 1 : 0
-
-  input = {
-    gateway_id = google_network_services_agent_gateway.this.id
-    body       = local.dns_peering_body
-  }
-
-  triggers_replace = [local.dns_peering_body, google_network_services_agent_gateway.this.id]
-
-  provisioner "local-exec" {
-    when        = create
-    interpreter = ["/usr/bin/env", "bash", "-c"]
-    command     = <<-EOT
-      set -euo pipefail
-      TOKEN="$(gcloud auth print-access-token)"
-      OP="$(curl -fsS -X PATCH \
-        -H "Authorization: Bearer $TOKEN" \
-        -H "Content-Type: application/json" \
-        --data '${self.input.body}' \
-        "https://networkservices.googleapis.com/v1beta1/${self.input.gateway_id}?updateMask=networkConfig.dnsPeeringConfig" \
-        | jq -r '.name')"
-      for _ in $(seq 1 60); do
-        DONE="$(curl -fsS -H "Authorization: Bearer $TOKEN" \
-          "https://networkservices.googleapis.com/v1beta1/$OP" | jq -r '.done // false')"
-        [ "$DONE" = "true" ] && break
-        sleep 2
-      done
-    EOT
-  }
-
-  provisioner "local-exec" {
-    when        = destroy
-    interpreter = ["/usr/bin/env", "bash", "-c"]
-    command     = <<-EOT
-      set -euo pipefail
-      TOKEN="$(gcloud auth print-access-token)"
-      OP="$(curl -fsS -X PATCH \
-        -H "Authorization: Bearer $TOKEN" \
-        -H "Content-Type: application/json" \
-        --data '{"networkConfig":{}}' \
-        "https://networkservices.googleapis.com/v1beta1/${self.input.gateway_id}?updateMask=networkConfig.dnsPeeringConfig" \
-        | jq -r '.name')"
-      for _ in $(seq 1 60); do
-        DONE="$(curl -fsS -H "Authorization: Bearer $TOKEN" \
-          "https://networkservices.googleapis.com/v1beta1/$OP" | jq -r '.done // false')"
-        [ "$DONE" = "true" ] && break
-        sleep 2
-      done
-    EOT
-  }
-
-  depends_on = [time_sleep.wait_for_gateway]
 }
 
 # IAP REQUEST_AUTHZ service extension. The Agent Gateway calls IAP per request

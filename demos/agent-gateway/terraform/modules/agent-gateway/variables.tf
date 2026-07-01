@@ -96,7 +96,7 @@ variable "iap_iam_enforcement_mode" {
 }
 
 variable "dns_peering_config" {
-  description = "Optional DNS peering for the Agent Gateway. When set, the gateway resolves the listed `domains` (must end with a dot) against the target VPC's private Cloud DNS zones — required for the gateway to reach upstream MCP servers by hostname. Typical entries: the LB-fronted MCP zone (e.g. `mcp.<your-domain>.`) and `run.app.` when MCP servers are registered with their literal Cloud Run URLs and the networking module is provisioning the `enable_run_app_psc` private zone. The provider does not yet expose `network_config.dns_peering_config`, so this is applied via a post-apply REST PATCH (terraform_data + local-exec)."
+  description = "Optional DNS peering for the Agent Gateway. When set, the gateway resolves the listed `domains` (must end with a dot) against the target VPC's private Cloud DNS zones — required for the gateway to reach upstream MCP servers by hostname. Typical entries: the LB-fronted MCP zone (e.g. `mcp.<your-domain>.`) and `run.app.` when MCP servers are registered with their literal Cloud Run URLs and the networking module is provisioning the `enable_run_app_psc` private zone. Applied natively via `network_config.dns_peering_config` on the Agent Gateway resource."
   type = object({
     domains        = list(string)
     target_project = string

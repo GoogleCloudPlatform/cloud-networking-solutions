@@ -448,7 +448,7 @@ variable "agent_gateway_iap_iam_enforcement_mode" {
 }
 
 variable "agent_gateway_dns_peering_config" {
-  description = "Optional DNS peering for the Agent Gateway. Lets the gateway resolve the listed `domains` (each must end with a dot) against the target VPC's private Cloud DNS zones — required for the gateway to reach upstream MCP servers by hostname (e.g. `mcp.agent-gateway.sc-ccn.xyz.` records that point at the MCP internal LB). `target_project` defaults to `var.project_id` and `target_network` defaults to the self-link of the VPC this module creates; override only when peering against a VPC in a different project or network. The terraform-provider-google-beta does not yet expose `network_config.dns_peering_config`; this is applied via a post-apply REST PATCH inside the agent-gateway module."
+  description = "Optional DNS peering for the Agent Gateway. Lets the gateway resolve the listed `domains` (each must end with a dot) against the target VPC's private Cloud DNS zones — required for the gateway to reach upstream MCP servers by hostname (e.g. `mcp.agent-gateway.sc-ccn.xyz.` records that point at the MCP internal LB). `target_project` defaults to `var.project_id` and `target_network` defaults to the self-link of the VPC this module creates; override only when peering against a VPC in a different project or network. Applied natively via `network_config.dns_peering_config` on the Agent Gateway resource."
   type = object({
     domains        = list(string)
     target_project = optional(string)
