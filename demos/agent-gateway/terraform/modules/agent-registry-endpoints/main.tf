@@ -37,6 +37,35 @@ locals {
       )
     }
   }
+
+  # Flatten each Google API into its five endpoint variants (global, mTLS,
+  # locational, locational mTLS, and regional REP), keyed by service_id. IDs,
+  # display names, and URLs mirror the variants the old registration script
+  # produced 1:1.
+  google_api_variants = merge([
+    for id, name in var.google_apis : {
+      (id) = {
+        display_name = name
+        url          = "https://${id}.googleapis.com"
+      }
+      "${id}-mtls" = {
+        display_name = "${name} mTLS"
+        url          = "https://${id}.mtls.googleapis.com"
+      }
+      "${var.location}-${id}" = {
+        display_name = "${name} Locational"
+        url          = "https://${var.location}-${id}.googleapis.com"
+      }
+      "${var.location}-${id}-mtls" = {
+        display_name = "${name} Locational mTLS"
+        url          = "https://${var.location}-${id}.mtls.googleapis.com"
+      }
+      "${id}-${var.location}-rep" = {
+        display_name = "${name} Regional (REP)"
+        url          = "https://${id}.${var.location}.rep.googleapis.com"
+      }
+    }
+  ]...)
 }
 
 # Cross-variable input validation. Variable `validation` blocks can't reference
@@ -75,26 +104,70 @@ resource "terraform_data" "mcp_input_check" {
   }
 }
 
-resource "null_resource" "register_endpoints" {
-  triggers = {
-    google_apis     = jsonencode(var.google_apis)
-    custom_services = jsonencode(var.custom_services)
-    mcp_servers     = jsonencode(local.mcp_registrations)
-    project_id      = var.project_id
-    location        = var.location
+# Google API endpoints (global, mTLS, locational, and REP variants). These are
+# plain endpoints with no spec, exposed over JSON-RPC.
+resource "google_agent_registry_service" "google_apis" {
+  for_each = local.google_api_variants
+
+  project      = var.project_id
+  location     = var.location
+  service_id   = each.key
+  display_name = each.value.display_name
+
+  interfaces {
+    url              = each.value.url
+    protocol_binding = "JSONRPC"
   }
 
-  provisioner "local-exec" {
-    command = templatefile("${path.module}/scripts/register_endpoints.sh.tpl", {
-      google_apis     = var.google_apis
-      custom_services = var.custom_services
-      mcp_servers     = local.mcp_registrations
-    })
+  endpoint_spec {
+    type = "NO_SPEC"
+  }
 
-    environment = {
-      PROJECT_ID = var.project_id
-      LOCATION   = var.location
-    }
+  depends_on = [terraform_data.mcp_input_check]
+}
+
+# Custom (non-Google) service endpoints, e.g. GitHub. Also spec-less endpoints.
+resource "google_agent_registry_service" "custom" {
+  for_each = { for svc in var.custom_services : svc.id => svc }
+
+  project      = var.project_id
+  location     = var.location
+  service_id   = each.key
+  display_name = each.value.display_name
+  description  = each.value.description
+
+  interfaces {
+    url              = each.value.url
+    protocol_binding = "JSONRPC"
+  }
+
+  endpoint_spec {
+    type = "NO_SPEC"
+  }
+
+  depends_on = [terraform_data.mcp_input_check]
+}
+
+# MCP servers. Registered as MCP Server services carrying an inline tool spec.
+# The native resource takes the spec *content*, so read the toolspec.json file
+# (existence is validated by terraform_data.mcp_input_check above).
+resource "google_agent_registry_service" "mcp" {
+  for_each = local.mcp_registrations
+
+  project      = var.project_id
+  location     = var.location
+  service_id   = each.value.id
+  display_name = each.value.display_name
+  description  = each.value.description
+
+  interfaces {
+    url              = each.value.url
+    protocol_binding = "JSONRPC"
+  }
+
+  mcp_server_spec {
+    type    = "TOOL_SPEC"
+    content = file(each.value.tool_spec_path)
   }
 
   depends_on = [terraform_data.mcp_input_check]

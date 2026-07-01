@@ -315,7 +315,7 @@ output "agent_gateway_subnet_self_link" {
 
 # Agent Registry Endpoints Outputs
 
-output "agent_registry_endpoints_id" {
-  description = "The ID of the null_resource that registered the Agent Registry endpoints"
-  value       = var.enable_agent_registry_endpoints ? module.agent_registry_endpoints[0].id : null
+output "agent_registry_service_ids" {
+  description = "Map of registered Agent Registry service resource IDs, keyed by service_id"
+  value       = var.enable_agent_registry_endpoints ? module.agent_registry_endpoints[0].service_ids : null
 }

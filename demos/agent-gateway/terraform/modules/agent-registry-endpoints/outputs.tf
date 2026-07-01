@@ -12,7 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-output "id" {
-  description = "The ID of the null_resource that registered the endpoints."
-  value       = null_resource.register_endpoints.id
+output "service_ids" {
+  description = "Map of registered Agent Registry service resource IDs, keyed by service_id."
+  value = merge(
+    { for k, r in google_agent_registry_service.google_apis : k => r.id },
+    { for k, r in google_agent_registry_service.custom : k => r.id },
+    { for k, r in google_agent_registry_service.mcp : k => r.id },
+  )
 }
