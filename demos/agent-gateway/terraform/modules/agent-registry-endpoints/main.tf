@@ -44,7 +44,9 @@ locals {
   # produced 1:1.
   google_api_variants = merge([
     for id, name in var.google_apis : {
-      (id) = {
+      # service_id must be 4-63 chars ([a-z][a-z0-9-]{2,61}[a-z0-9]); pad API
+      # ids shorter than 4 chars (e.g. "iap") while keeping the real URL host.
+      (length(id) >= 4 ? id : "${id}-endpoint") = {
         display_name = name
         url          = "https://${id}.googleapis.com"
       }

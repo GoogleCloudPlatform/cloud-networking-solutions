@@ -86,7 +86,7 @@ variable "authz_extension_fail_open" {
 }
 
 variable "iap_iam_enforcement_mode" {
-  description = "Set to \"DRY_RUN\" to write metadata.iamEnforcementMode = DRY_RUN on the IAP authz extension — IAP evaluates IAM allow policies and emits decision logs but does not block. Leave null (the default) to send no metadata, which matches the IAP default of enforcing."
+  description = "Set to \"DRY_RUN\" to write metadata.iamEnforcementMode = DRY_RUN on the IAP authz extension — IAP evaluates IAM allow policies and emits decision logs but does not block. Leave null (the default) to omit iamEnforcementMode, which matches the IAP default of enforcing. Independent of this setting, the extension always sends metadata.iapPolicyVersion = \"V1\", which IAP now requires."
   type        = string
   default     = null
   validation {

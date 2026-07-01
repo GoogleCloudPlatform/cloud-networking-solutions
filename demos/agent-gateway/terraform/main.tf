@@ -50,8 +50,12 @@ locals {
     try(var.agent_gateway_dns_peering_config.domains, []),
   )))
 
+  # Collapse to null whenever there are no domains to peer — the Agent Gateway
+  # API rejects a dns_peering_config with an empty domains list. This covers the
+  # case where the input var is set but resolves to zero effective domains (e.g.
+  # private networking off, so no MCP zone, and no user-supplied domains).
   agent_gateway_dns_peering_config_effective = (
-    var.agent_gateway_dns_peering_config == null && length(local._agent_gateway_dns_peering_domains) == 0
+    length(local._agent_gateway_dns_peering_domains) == 0
     ? null
     : {
       domains        = local._agent_gateway_dns_peering_domains

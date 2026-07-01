@@ -80,7 +80,9 @@ resource "google_network_services_agent_gateway" "this" {
     # mcp.agent-gateway.sc-ccn.xyz.) so it can reach upstream MCP servers by
     # hostname.
     dynamic "dns_peering_config" {
-      for_each = var.dns_peering_config != null ? [var.dns_peering_config] : []
+      # Only emit the block when there is at least one domain — the API rejects
+      # a dns_peering_config with an empty domains list.
+      for_each = try(length(var.dns_peering_config.domains), 0) > 0 ? [var.dns_peering_config] : []
       content {
         domains        = dns_peering_config.value.domains
         target_project = dns_peering_config.value.target_project
@@ -109,9 +111,18 @@ resource "google_network_services_authz_extension" "iap" {
   timeout   = var.authz_extension_timeout
   fail_open = var.authz_extension_fail_open
 
-  metadata = var.iap_iam_enforcement_mode != null ? {
-    iamEnforcementMode = var.iap_iam_enforcement_mode
-  } : null
+  # iapPolicyVersion is required by IAP on the authz extension (GA-era rollout);
+  # without it the per-request IAP authorization path is misconfigured. "V1" is
+  # currently the only valid value. iamEnforcementMode is merged in only for the
+  # DRY_RUN case.
+  metadata = merge(
+    {
+      iapPolicyVersion = "V1"
+    },
+    var.iap_iam_enforcement_mode != null ? {
+      iamEnforcementMode = var.iap_iam_enforcement_mode
+    } : {}
+  )
 }
 
 # Model Armor CONTENT_AUTHZ service extension. Regional REP endpoint —
