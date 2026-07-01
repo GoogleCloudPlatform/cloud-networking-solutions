@@ -29,7 +29,7 @@ data "google_compute_zones" "available" {
 
 # VPC Network
 module "vpc" {
-  source       = "github.com/GoogleCloudPlatform/cloud-foundation-fabric//modules/net-vpc?ref=v55.3.0"
+  source       = "github.com/GoogleCloudPlatform/cloud-foundation-fabric//modules/net-vpc?ref=v55.4.0"
   project_id   = var.project_id
   name         = var.vpc_name
   routing_mode = "REGIONAL"
@@ -88,7 +88,7 @@ resource "google_compute_router_nat" "nat_gateway" {
 # This zone is consumed by Apigee via DNS peering, not by VPC workloads
 module "apigee_internal_dns_zone" {
   count      = var.apigee_internal_dns_zone != null ? 1 : 0
-  source     = "github.com/GoogleCloudPlatform/cloud-foundation-fabric//modules/dns?ref=v55.3.0"
+  source     = "github.com/GoogleCloudPlatform/cloud-foundation-fabric//modules/dns?ref=v55.4.0"
   project_id = var.project_id
   name       = var.apigee_internal_dns_zone.name
   zone_config = {
@@ -104,7 +104,7 @@ module "apigee_internal_dns_zone" {
 # Agent Engine) if needed.
 module "mcp_internal_dns_zone" {
   count      = var.mcp_internal_dns_zone != null ? 1 : 0
-  source     = "github.com/GoogleCloudPlatform/cloud-foundation-fabric//modules/dns?ref=v55.3.0"
+  source     = "github.com/GoogleCloudPlatform/cloud-foundation-fabric//modules/dns?ref=v55.4.0"
   project_id = var.project_id
   name       = var.mcp_internal_dns_zone.name
   zone_config = {
@@ -171,7 +171,7 @@ resource "google_compute_subnetwork" "agent_gateway" {
 # PSC Interface — private DNS zone for DNS peering (only if different from MCP zone)
 module "psc_interface_dns_zone" {
   count      = var.enable_psc_interface && var.psc_interface_dns_zone != null && (var.mcp_internal_dns_zone == null || var.psc_interface_dns_zone.name != var.mcp_internal_dns_zone.name) ? 1 : 0
-  source     = "github.com/GoogleCloudPlatform/cloud-foundation-fabric//modules/dns?ref=v55.3.0"
+  source     = "github.com/GoogleCloudPlatform/cloud-foundation-fabric//modules/dns?ref=v55.4.0"
   project_id = var.project_id
   name       = var.psc_interface_dns_zone.name
   zone_config = {
@@ -192,7 +192,7 @@ module "psc_interface_dns_zone" {
 # override on the egress path.
 module "run_app_private_zone" {
   count      = var.enable_run_app_psc ? 1 : 0
-  source     = "github.com/GoogleCloudPlatform/cloud-foundation-fabric//modules/dns?ref=v55.3.0"
+  source     = "github.com/GoogleCloudPlatform/cloud-foundation-fabric//modules/dns?ref=v55.4.0"
   project_id = var.project_id
   name       = "run-app-internal"
   zone_config = {
