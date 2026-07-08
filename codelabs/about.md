@@ -17,3 +17,9 @@ The code within the subdirectories is intended to be checked out or downloaded a
 *   **Directory:** [`agw-cuj-arun-egress-emcp/`](agw-cuj-arun-egress-emcp/)
 *   **Description:** Implement agent governance with Agent Gateway deployed in agent-to-anywhere (egress) mode to authorize and secure outbound traffic from an Agent Runtime hosted agent accessing an external Model Context Protocol (MCP) endpoint using fine-grained conditional policies.
 *   **Published Codelab Link:** [https://codelabs.developers.google.com/agw-cuj-arun-egress-emcp](https://codelabs.developers.google.com/agw-cuj-arun-egress-emcp)
+
+### Agent Gateway egress from Agent Runtime to VPC
+
+*   **Directory:** [`agw-cuj-arun-egress-vpc/`](agw-cuj-arun-egress-vpc/)
+*   **Description:** Implement agent governance with Agent Gateway deployed in agent-to-anywhere (egress) mode to authorize and secure outbound traffic from an agent hosted on Agent Runtime to a VPC network with Private Service Connect (PSC) endpoint accessing an MCP server hosted on Cloud Run.
+*   **Published Codelab Link:** [https://codelabs.developers.google.com/agw-cuj-arun-egress-vpc](https://codelabs.developers.google.com/agw-cuj-arun-egress-vpc)
