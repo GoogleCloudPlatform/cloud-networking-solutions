@@ -1,0 +1,16 @@
+[project]
+name = "agent-weather"
+version = "1.0.2"
+description = "agent for weather info using custom weather mcp tools"
+requires-python = ">=3.11,<3.13"
+dependencies = [
+    "google-adk==1.31.1",
+    "google-genai",
+    "pydantic",
+    "google-cloud-aiplatform[agent_engines,adk]>=1.40.0",
+    "cloudpickle>=3.0.0",
+    "python-dotenv",
+    "opentelemetry-instrumentation-httpx",
+    "opentelemetry-instrumentation-grpc",
+    "opentelemetry-instrumentation-google-genai",
+]
