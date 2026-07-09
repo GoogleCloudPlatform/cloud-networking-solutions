@@ -539,9 +539,9 @@ resource "google_project_iam_member" "run_admin" {
 }
 
 # Phase 15: Agent Registry Endpoints — governance plane fronting the Google API
-# services AND the MCP Cloud Run services. Registers all regional, mTLS, and REP
-# variants of the specified Google APIs, plus one entry per MCP Cloud Run service
-# (URL = https://<service>.<mcp_internal_dns_zone.domain>).
+# services AND the MCP Cloud Run services. Registers each Google API endpoint in
+# var.agent_registry_endpoints exactly as listed, plus one entry per MCP Cloud
+# Run service (URL = https://<service>.<mcp_internal_dns_zone.domain>).
 module "agent_registry_endpoints" {
   count  = var.enable_agent_registry_endpoints ? 1 : 0
   source = "./modules/agent-registry-endpoints"
@@ -549,8 +549,8 @@ module "agent_registry_endpoints" {
   project_id = var.project_id
   location   = var.region
 
-  google_apis     = var.agent_registry_google_apis
-  custom_services = var.agent_registry_custom_services
+  google_api_endpoints = var.agent_registry_endpoints
+  custom_services      = var.agent_registry_custom_services
 
   mcp_servers = {
     for name in keys(var.mcp_services) : name => {

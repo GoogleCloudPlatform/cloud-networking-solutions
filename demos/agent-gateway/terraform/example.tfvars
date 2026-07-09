@@ -238,23 +238,19 @@ enable_run_app_psc = false
 # Enable the Agent Registry endpoint provisioner
 enable_agent_registry_endpoints = true
 
-# Optional: Override the default list of Google APIs to register. Map key is
-# the service short name; value is the human-readable display name surfaced in
-# the Agent Registry UI.
-agent_registry_google_apis = {
-  aiplatform           = "Vertex AI Platform"
-  cloudresourcemanager = "Cloud Resource Manager"
-  discoveryengine      = "Discovery Engine"
-  logging              = "Logging"
-  monitoring           = "Monitoring"
-  oauth2               = "OAuth2"
-  telemetry            = "Telemetry"
-  trace                = "Trace"
-  agentregistry        = "Agent Registry"
-  iap                  = "Identity-Aware Proxy"
-  modelarmor           = "Model Armor"
-  iamcredentials       = "IAM Credentials"
-}
+# Optional: Override the default list of Google API endpoints to register. Each
+# entry registers one exact hostname (no automatic variant expansion). A
+# "{region}" token in id or url is replaced with var.region.
+agent_registry_endpoints = [
+  "https://agentregistry.googleapis.com",
+  "https://aiplatform.mtls.googleapis.com",
+  "https://cloudresourcemanager.mtls.googleapis.com",
+  "https://iamcredentials.mtls.googleapis.com",
+  "https://telemetry.mtls.googleapis.com",
+  "https://{region}-aiplatform.mtls.googleapis.com",
+  "https://{region}-aiplatform.googleapis.com",
+  "https://aiplatform.{region}.rep.googleapis.com",
+]
 
 # Optional: Override or add custom (non-Google) services to register
 agent_registry_custom_services = [

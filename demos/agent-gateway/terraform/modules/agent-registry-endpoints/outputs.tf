@@ -15,7 +15,7 @@
 output "service_ids" {
   description = "Map of registered Agent Registry service resource IDs, keyed by service_id."
   value = merge(
-    { for k, r in google_agent_registry_service.google_apis : k => r.id },
+    { (google_agent_registry_service.google_apis.service_id) = google_agent_registry_service.google_apis.id },
     { for k, r in google_agent_registry_service.custom : k => r.id },
     { for k, r in google_agent_registry_service.mcp : k => r.id },
   )

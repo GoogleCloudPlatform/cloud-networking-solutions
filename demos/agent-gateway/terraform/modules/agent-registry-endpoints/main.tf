@@ -38,36 +38,12 @@ locals {
     }
   }
 
-  # Flatten each Google API into its five endpoint variants (global, mTLS,
-  # locational, locational mTLS, and regional REP), keyed by service_id. IDs,
-  # display names, and URLs mirror the variants the old registration script
-  # produced 1:1.
-  google_api_variants = merge([
-    for id, name in var.google_apis : {
-      # service_id must be 4-63 chars ([a-z][a-z0-9-]{2,61}[a-z0-9]); pad API
-      # ids shorter than 4 chars (e.g. "iap") while keeping the real URL host.
-      (length(id) >= 4 ? id : "${id}-endpoint") = {
-        display_name = name
-        url          = "https://${id}.googleapis.com"
-      }
-      "${id}-mtls" = {
-        display_name = "${name} mTLS"
-        url          = "https://${id}.mtls.googleapis.com"
-      }
-      "${var.location}-${id}" = {
-        display_name = "${name} Locational"
-        url          = "https://${var.location}-${id}.googleapis.com"
-      }
-      "${var.location}-${id}-mtls" = {
-        display_name = "${name} Locational mTLS"
-        url          = "https://${var.location}-${id}.mtls.googleapis.com"
-      }
-      "${id}-${var.location}-rep" = {
-        display_name = "${name} Regional (REP)"
-        url          = "https://${id}.${var.location}.rep.googleapis.com"
-      }
-    }
-  ]...)
+  # Google API endpoint URLs, each registered as an interface under the single
+  # "googleapis" service below. A "{region}" token is replaced with var.location
+  # for portability (e.g. "{region}-aiplatform" -> "us-central1-aiplatform").
+  google_api_interface_urls = [
+    for url in var.google_api_endpoints : replace(url, "{region}", var.location)
+  ]
 }
 
 # Cross-variable input validation. Variable `validation` blocks can't reference
@@ -106,19 +82,21 @@ resource "terraform_data" "mcp_input_check" {
   }
 }
 
-# Google API endpoints (global, mTLS, locational, and REP variants). These are
-# plain endpoints with no spec, exposed over JSON-RPC.
+# All Google API endpoints registered as interfaces under a SINGLE "googleapis"
+# Agent Registry service (one entry, one interface per URL in
+# var.google_api_endpoints). Spec-less endpoint, JSON-RPC on every interface.
 resource "google_agent_registry_service" "google_apis" {
-  for_each = local.google_api_variants
-
   project      = var.project_id
   location     = var.location
-  service_id   = each.key
-  display_name = each.value.display_name
+  service_id   = "googleapis"
+  display_name = "Google APIs"
 
-  interfaces {
-    url              = each.value.url
-    protocol_binding = "JSONRPC"
+  dynamic "interfaces" {
+    for_each = local.google_api_interface_urls
+    content {
+      url              = interfaces.value
+      protocol_binding = "JSONRPC"
+    }
   }
 
   endpoint_spec {
