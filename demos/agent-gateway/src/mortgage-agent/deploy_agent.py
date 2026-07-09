@@ -328,11 +328,14 @@ def main() -> None:
         "--registry-endpoint",
         default=None,
         help=(
-            "Override the Agent Registry base URL the agent calls (e.g. "
-            "https://agentregistry.googleapis.com/v1alpha for the global "
-            "endpoint). Default: the regional endpoint derived from --region "
-            "(https://<region>-agentregistry.googleapis.com/v1alpha). Passed "
-            "to the agent as MCP_REGISTRY_ENDPOINT."
+            "Override the Agent Registry base URL the agent calls. When "
+            "unset, MCP_REGISTRY_ENDPOINT is not exported and the agent "
+            "uses ADK's built-in default "
+            "(https://agentregistry.googleapis.com/v1alpha) — currently "
+            "the only endpoint that serves mcpServers. Set this to a "
+            "regional URL (e.g. https://<region>-agentregistry.googleapis.com/v1alpha) "
+            "once those endpoints exist. Passed to the agent as "
+            "MCP_REGISTRY_ENDPOINT."
         ),
     )
     parser.add_argument(

@@ -242,6 +242,18 @@ def _render_mcp_services_doc() -> str:
     return "\n".join(lines)
 
 
+# `BaseExceptionGroup` is a builtin on Python 3.11+. Reasoning Engine has
+# historically shipped 3.10 base images that lack it; referencing the name
+# unconditionally raised NameError and crashed this callback (which then
+# masked the underlying 403 in stack traces). Fall back to an empty tuple
+# so isinstance() is always False on older runtimes — nested groups won't
+# be traversed, but the handler no longer crashes.
+try:
+    _BaseExceptionGroup: type | tuple = BaseExceptionGroup
+except NameError:
+    _BaseExceptionGroup = ()
+
+
 def _find_http_status_error(exc: BaseException, status_code: int) -> bool:
     """Search exception chains and ExceptionGroups for an HTTPStatusError."""
     seen: set[int] = set()
@@ -257,7 +269,7 @@ def _find_http_status_error(exc: BaseException, status_code: int) -> bool:
             queue.append(current.__cause__)
         if current.__context__ is not None:
             queue.append(current.__context__)
-        if isinstance(current, BaseExceptionGroup):
+        if isinstance(current, _BaseExceptionGroup):
             queue.extend(current.exceptions)
     return False
 
