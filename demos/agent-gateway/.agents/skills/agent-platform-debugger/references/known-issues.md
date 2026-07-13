@@ -421,3 +421,75 @@ Verify and expand the PSC subnet.
     gcloud compute networks subnetworks describe <SUBNET_NAME> --region=$LOCATION
     ```
 4.  If the subnet is small (e.g. `/28` or `/29`), it may be exhausted. Allocate a larger subnet (minimum `/26` recommended) or expand the existing one, and recreate the network attachment and gateway if necessary.
+
+--------------------------------------------------------------------------------
+
+## 20. Config Validation Failure: Missing Agent Registry API enablement
+
+**Symptom:**
+During `gcloud alpha network-services agent-gateways import`, the command fails with:
+```
+ERROR: (gcloud.alpha.network-services.agent-gateways.import) {
+  "code": 3,
+  "details": [
+    {
+      "@type": "type.googleapis.com/google.rpc.BadRequest",
+      "fieldViolations": [
+        {
+          "description": "most likely missing permissions in project <PROJECT_NUMBER>, location <LOCATION>: agentregistry.agents.list, agentregistry.endpoints.list, and agentregistry.mcpServers.list",
+          "field": "resource.registries"
+        }
+      ]
+    }
+  ],
+  "message": "Config validation failed"
+}
+```
+
+**Cause:**
+The Agent Registry API (`agentregistry.googleapis.com`) is not enabled in the project. The error message misleadingly suggests a permission issue.
+
+**Fix:**
+Enable the Agent Registry API in the project:
+```bash
+gcloud services enable agentregistry.googleapis.com --project=YOUR_PROJECT_ID
+```
+
+--------------------------------------------------------------------------------
+
+## 21. Agent Identity Egress to Cloud Run / Functions fails with 401/403 (JWT Auth issue)
+
+**Symptom:**
+The agent is registered in the Agent Registry with an Agent Gateway. When attempting to call an MCP server or tool hosted on Cloud Run or Cloud Functions, the request fails with an egress error or HTTP 401 Unauthorized / 403 Forbidden.
+
+**Cause:**
+Direct Agent Identity (using `principalSet`) to Cloud Run OIDC authentication is not supported natively. Cloud Run requires a standard OIDC ID token, which the default agent identity cannot obtain directly.
+
+**Fix / Workaround:**
+The agent must use Service Account impersonation to obtain an OIDC ID token to authenticate with Cloud Run.
+
+1.  **Configure IAM Permissions:**
+    *   The Agent Identity (`principalSet://...`) must have the `roles/iam.serviceAccountTokenCreator` role on a target Service Account (e.g. `mcp-invoker-sa`).
+    *   The target Service Account must have `roles/run.invoker` on the Cloud Run service.
+2.  **Enable Service Account Token Creator API:**
+    Ensure `iamcredentials.googleapis.com` is enabled in the project.
+3.  **Impersonate in Code:**
+    Use the Google Auth SDK to impersonate the Service Account and generate ID tokens for the Cloud Run audience.
+    Example Python (ADK):
+    ```python
+    from google.auth import impersonated_credentials
+    import google.auth
+    
+    source_creds, _ = google.auth.default(scopes=["https://www.googleapis.com/auth/cloud-platform"])
+    impersonated = impersonated_credentials.Credentials(
+        source_credentials=source_creds,
+        target_principal="YOUR_TARGET_SA_EMAIL",
+        target_scopes=["https://www.googleapis.com/auth/cloud-platform"],
+    )
+    id_token_creds = impersonated_credentials.IDTokenCredentials(
+        target_credentials=impersonated,
+        target_audience="YOUR_CLOUD_RUN_URL_ORIGIN",
+        include_email=True,
+    )
+    # Use id_token_creds to authenticate requests to Cloud Run.
+    ```
