@@ -493,3 +493,25 @@ The agent must use Service Account impersonation to obtain an OIDC ID token to a
     )
     # Use id_token_creds to authenticate requests to Cloud Run.
     ```
+
+--------------------------------------------------------------------------------
+
+## 22. Agent deployed but not visible in Registry (Boundary issue)
+
+**Symptom:**
+You have successfully deployed an agent (e.g., via Vertex AI Agent Engine SDK), but when you list agents from your designated Management Project using `gcloud alpha agent-registry agents list`, the agent is missing.
+
+**Cause:**
+The Agent Registry uses a "Management Boundary" to define which projects' agents are governed and visible. If the project where the agent was deployed is not included in the Management Boundary of the Management Project, it will not be discoverable.
+
+**Fix:**
+Update the Agent Management Boundary of your Management Project to include the project or folder where the agent is hosted.
+
+1.  Verify the current boundary settings (if supported) or update the boundary to include the target CRM node (project or folder):
+    ```bash
+    gcloud agent-registry boundary update --crmNode=projects/YOUR_AGENT_HOST_PROJECT_ID
+    ```
+    Or if you want to manage a whole folder:
+    ```bash
+    gcloud agent-registry boundary update --crmNode=folders/YOUR_FOLDER_ID
+    ```

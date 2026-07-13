@@ -78,6 +78,8 @@ Read these first when something is broken.
     the hostname permutation you expect is actually present. `gcloud alpha
     agent-registry endpoints list --project=$PROJECT_ID --location=$LOCATION`
 
+11. **Boundary controls visibility.** Agents are only discoverable if they are hosted in a project that is within the defined **Agent Management Boundary** of the Management Project. If an agent is missing from the list, check the boundary configuration.
+
 --------------------------------------------------------------------------------
 
 ## 1. The Data Model in One Picture
@@ -342,9 +344,9 @@ gcloud alpha agent-registry services delete AGENT_NAME \
 
 ### Common pitfalls
 
--   **Agent registered but not discoverable**: check you're querying the right
-    project + location. Manual registration is rejected in `us`/`eu`
-    multi-regions.
+-   **Agent registered but not discoverable**:
+    *   Check you're querying the right project + location. Manual registration is rejected in `us`/`eu` multi-regions.
+    *   Verify the agent's hosting project is within the **Agent Management Boundary** of the Management Project. If it is outside the boundary, the registry will not expose it. Check/update via `gcloud agent-registry boundary update`.
 -   **Agent appears in `services list` but not `agents list`**: wrong
     `*-spec-type` at creation time. The projection only appears for the matching
     spec type.
