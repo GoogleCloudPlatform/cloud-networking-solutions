@@ -93,6 +93,11 @@ output "agent_mcp_invoker_email" {
   value       = var.enable_agent_engine ? module.agent_engine[0].agent_mcp_invoker_email : null
 }
 
+output "reasoning_engine_name" {
+  description = "Full resource name of the Terraform-deployed reasoning engine (projects/.../reasoningEngines/<id>). Null unless deploy_reasoning_engine is true."
+  value       = var.enable_agent_engine && var.deploy_reasoning_engine ? module.agent_engine[0].reasoning_engine_name : null
+}
+
 output "mcp_internal_dns_names" {
   description = "Map of MCP service key to its private DNS name (<service>.<domain>). Null when enable_cloud_run_private_networking = false (no MCP private zone is provisioned)."
   value = (

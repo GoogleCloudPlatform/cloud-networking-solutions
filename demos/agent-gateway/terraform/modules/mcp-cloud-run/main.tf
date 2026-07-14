@@ -142,7 +142,7 @@ resource "google_cloud_run_v2_service" "mcp" {
 # caller. `allUsers` is intentionally not granted: MCP services are unreachable
 # except by holders of an OIDC token for the invoker SA, regardless of
 # `private_networking`. Per-agent authorization is still enforced upstream at
-# the Agent Gateway via `roles/iap.egressor` (see scripts/grant_agent_mcp_egress.sh).
+# the Agent Gateway via `roles/iap.egressor`.
 #
 # When `invoker_sa_email` is null (e.g. the agent-engine module is disabled),
 # no binding is created and Cloud Run is unreachable until invoker is granted

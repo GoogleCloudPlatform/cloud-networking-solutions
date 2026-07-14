@@ -278,9 +278,19 @@ module "agent_engine" {
 
   project_id     = var.project_id
   project_number = module.foundation.project_number
+  region         = var.region
 
   organization_id        = var.organization_id
   platform_admin_members = var.platform_admin_members
+
+  # Optional declarative reasoning-engine deploy (replaces deploy_agent.py's
+  # create path). Gateway association requires enable_agent_gateway.
+  deploy_reasoning_engine       = var.deploy_reasoning_engine
+  agent_gateway_id              = var.enable_agent_gateway ? module.agent_gateway[0].agent_gateway_id : null
+  agent_artifacts_manifest_path = var.agent_artifacts_manifest_path
+  agent_model                   = var.agent_model
+  model_endpoint_location       = var.model_endpoint_location
+  agent_display_name            = var.agent_display_name
 
   depends_on = [module.foundation]
 }
@@ -452,8 +462,8 @@ module "mcp_internal_lb" {
 
 # Phase 14: Agent Gateway — governance plane fronting the MCP services.
 # Provisions the gateway in AGENT_TO_ANYWHERE mode with PSC-I egress and IAP
-# and Model Armor authz extensions. Per-MCP-server `roles/iap.egressor`
-# bindings are issued out-of-band by `scripts/grant_agent_mcp_egress.sh`.
+# and Model Armor authz extensions. Per-endpoint `roles/iap.egressor` bindings
+# are managed in the agent_registry_endpoints module (see iap_egressor_members).
 module "agent_gateway" {
   count  = var.enable_agent_gateway ? 1 : 0
   source = "./modules/agent-gateway"
@@ -563,6 +573,23 @@ module "agent_registry_endpoints" {
   mcp_url_mode            = var.enable_cloud_run_private_networking ? "internal_lb" : "cloud_run"
   mcp_internal_dns_domain = local.mcp_internal_dns_domain_or_null
   mcp_service_urls        = module.mcp_services.service_urls
+
+  # Grant the agent principalSet roles/iap.egressor on each endpoint. Empty when
+  # Agent Engine is disabled (no agent identity to grant).
+  iap_egressor_members = var.enable_agent_engine ? [module.agent_engine[0].agent_identity_principal] : []
+
+  # Grant the deployed agent's per-agent identity roles/iap.egressor on each MCP
+  # server. Only populated when the reasoning engine is deployed via Terraform
+  # (its identity is unknown otherwise). corporate-email is restricted to
+  # read-only tools via an IAM condition; the others are unconditional.
+  mcp_egressor_members = var.enable_agent_engine && var.deploy_reasoning_engine ? [module.agent_engine[0].agent_engine_identity] : []
+  mcp_egressor_conditions = {
+    "corporate-email" = {
+      expression  = "api.getAttribute('iap.googleapis.com/mcp.tool.isReadOnly', false) == true || api.getAttribute('iap.googleapis.com/mcp.toolName', '') == ''"
+      title       = "ReadOnlyToolsOnly"
+      description = "Restrict the mortgage agent to read-only tools on corporate-email"
+    }
+  }
 
   depends_on = [module.foundation, module.mcp_services, module.mcp_internal_lb]
 }

@@ -351,6 +351,30 @@ def main() -> None:
             "output `agent_mcp_invoker_email`. Default: $MCP_INVOKER_SA_EMAIL."
         ),
     )
+    parser.add_argument(
+        "--build-only",
+        action="store_true",
+        help=(
+            "Package and upload the agent artifacts (pickle, dependencies, "
+            "requirements) to the staging bucket and write a manifest JSON, "
+            "WITHOUT creating/updating a reasoning engine. Used to feed the "
+            "Terraform google_vertex_ai_reasoning_engine package_spec."
+        ),
+    )
+    parser.add_argument(
+        "--artifacts-out",
+        default=None,
+        help=(
+            "Path to write the build-only manifest JSON (URIs + python_version + "
+            "agent_framework + class_methods). Relative paths resolve against the "
+            "current directory. Default: <repo>/build/agent_artifacts.json."
+        ),
+    )
+    parser.add_argument(
+        "--gcs-dir",
+        default="agent_engine",
+        help="Staging-bucket subdirectory for the uploaded artifacts (default: agent_engine).",
+    )
     args = parser.parse_args()
 
     if not args.project:
@@ -591,6 +615,57 @@ def main() -> None:
 
         if config:
             deploy_config.update(config)
+
+        if args.build_only:
+            # Stage the exact artifacts client.agent_engines.create() would
+            # upload (same pickle, deps tarball, requirements, class_methods),
+            # but do NOT create an engine. Terraform's package_spec consumes
+            # the resulting GCS URIs + class_methods via the manifest below.
+            # These _-prefixed helpers are SDK internals, safe only because the
+            # project pins google-cloud-aiplatform <1.154.
+            import json as _json
+
+            from vertexai._genai import _agent_engines_utils as _aeu
+
+            print(f"Build-only: staging artifacts to {staging_bucket}/{args.gcs_dir}/ (no engine create)...")
+            _aeu._prepare(
+                agent=app,
+                requirements=deploy_config["requirements"],
+                extra_packages=deploy_config["extra_packages"],
+                project=args.project,
+                location=args.region,
+                staging_bucket=staging_bucket,
+                gcs_dir_name=args.gcs_dir,
+            )
+            class_methods = [
+                _aeu._to_dict(s)
+                for s in _aeu._generate_class_methods_spec_or_raise(
+                    agent=app,
+                    operations=_aeu._get_registered_operations(agent=app),
+                )
+            ]
+            manifest = {
+                "pickle_uri": f"{staging_bucket}/{args.gcs_dir}/{_aeu._BLOB_FILENAME}",
+                "dependencies_uri": f"{staging_bucket}/{args.gcs_dir}/{_aeu._EXTRA_PACKAGES_FILE}",
+                "requirements_uri": f"{staging_bucket}/{args.gcs_dir}/{_aeu._REQUIREMENTS_FILE}",
+                "python_version": f"{sys.version_info.major}.{sys.version_info.minor}",
+                "agent_framework": _aeu._get_agent_framework(agent_framework=None, agent=app),
+                "class_methods": class_methods,
+            }
+            if args.artifacts_out:
+                out_path = (
+                    args.artifacts_out
+                    if os.path.isabs(args.artifacts_out)
+                    else os.path.join(original_cwd, args.artifacts_out)
+                )
+            else:
+                out_path = os.path.join(agent_dir, "..", "..", "build", "agent_artifacts.json")
+            out_path = os.path.abspath(out_path)
+            os.makedirs(os.path.dirname(out_path), exist_ok=True)
+            with open(out_path, "w") as mf:
+                _json.dump(manifest, mf, indent=2)
+            print(f"Staged artifacts and wrote manifest ({len(class_methods)} class methods): {out_path}")
+            return
 
         if args.update:
             engine = client.agent_engines.update(name=args.update, agent=app, config=deploy_config)

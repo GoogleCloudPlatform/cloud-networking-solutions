@@ -20,9 +20,9 @@
  * authz service extensions (IAP REQUEST_AUTHZ and Model Armor CONTENT_AUTHZ),
  * and the authz policies that bind those extensions to the gateway.
  *
- * Per-MCP-server `roles/iap.egressor` bindings (the grants IAP REQUEST_AUTHZ
- * actually evaluates) are issued out-of-band by `scripts/grant_agent_mcp_egress.sh`
- * after each agent deploy.
+ * Per-endpoint `roles/iap.egressor` bindings (the grants IAP REQUEST_AUTHZ
+ * actually evaluates) are managed declaratively in the agent-registry-endpoints
+ * module via `google_iap_agent_registry_endpoint_iam_member`.
  *
  * The Agent Gateway resource is GA (uses the default google provider). The authz
  * service extensions and policies remain beta — pinned via the google-beta provider.

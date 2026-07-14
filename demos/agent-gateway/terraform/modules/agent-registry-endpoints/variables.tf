@@ -89,3 +89,25 @@ variable "mcp_service_urls" {
   type        = map(string)
   default     = {}
 }
+
+variable "iap_egressor_members" {
+  description = "Principals granted roles/iap.egressor on each registered endpoint (the NO_SPEC google_apis and custom services). Typically the Agent Identity principalSet. Empty disables the bindings."
+  type        = list(string)
+  default     = []
+}
+
+variable "mcp_egressor_members" {
+  description = "Principals granted roles/iap.egressor on each registered MCP server. Typically the per-agent identity of the deployed reasoning engine. Empty disables the MCP bindings."
+  type        = list(string)
+  default     = []
+}
+
+variable "mcp_egressor_conditions" {
+  description = "Optional IAM condition per MCP server (keyed by service_id) applied to that server's egressor binding, e.g. restricting corporate-email to read-only tools. Servers absent from the map get an unconditional binding."
+  type = map(object({
+    expression  = string
+    title       = string
+    description = optional(string)
+  }))
+  default = {}
+}
