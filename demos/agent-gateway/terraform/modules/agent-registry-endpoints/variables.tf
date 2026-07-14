@@ -22,23 +22,19 @@ variable "location" {
   type        = string
 }
 
-variable "google_apis" {
-  description = "Map of Google API IDs to their display names to register with all regional/mtls variants"
-  type        = map(string)
-  default = {
-    aiplatform             = "Vertex AI Platform"
-    cloudresourcemanager   = "Cloud Resource Manager"
-    global-discoveryengine = "Global Discovery Engine"
-    discoveryengine        = "Discovery Engine"
-    logging                = "Logging"
-    monitoring             = "Monitoring"
-    oauth2                 = "OAuth2"
-    telemetry              = "Telemetry"
-    trace                  = "Trace"
-    agentregistry          = "Agent Registry"
-    iap                    = "Identity-Aware Proxy"
-    iamcredentials         = "IAM Credentials"
-  }
+variable "google_api_endpoints" {
+  description = "Google API endpoint URLs registered as interfaces under a single \"googleapis\" Agent Registry service. A \"{region}\" token is replaced with var.location."
+  type        = list(string)
+  default = [
+    "https://agentregistry.googleapis.com",
+    "https://aiplatform.mtls.googleapis.com",
+    "https://cloudresourcemanager.mtls.googleapis.com",
+    "https://iamcredentials.mtls.googleapis.com",
+    "https://telemetry.mtls.googleapis.com",
+    "https://{region}-aiplatform.mtls.googleapis.com",
+    "https://{region}-aiplatform.googleapis.com",
+    "https://aiplatform.{region}.rep.googleapis.com",
+  ]
 }
 
 variable "custom_services" {
