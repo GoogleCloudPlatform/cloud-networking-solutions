@@ -156,6 +156,34 @@ model_armor_sdp_enforcement = "ENABLED"
 # Enable Vertex AI Agent Engine infrastructure (IAM, networking)
 enable_agent_engine = true
 
+# Optional: let Terraform own the mortgage agent's reasoning engine (and the
+# per-agent MCP-server egressor grants) instead of deploying it imperatively
+# with src/mortgage-agent/deploy_agent.py. Requires enable_agent_gateway.
+#
+# Two-phase, because a reasoning engine deploys from prebuilt artifacts: apply
+# once with this false, then stage the artifacts and re-apply with it true.
+#   cd src/mortgage-agent
+#   uv run python deploy_agent.py --build-only --project=... --region=...
+# deploy_reasoning_engine = true
+
+# Optional: path to the manifest written by `deploy_agent.py --build-only`.
+# Defaults to ../build/agent_artifacts.json, i.e. exactly where that command
+# puts it, so you normally don't need to set this.
+# agent_artifacts_manifest_path = "../build/agent_artifacts.json"
+
+# Optional: bucket the build-only artifacts were staged to. The manifest is
+# deliberately bucket-free, so Terraform rebuilds the gs:// URIs itself using
+# the same default as the script (gs://<project_id>-staging). Only set this if
+# you passed --staging-bucket to deploy_agent.py; the two must agree.
+# agent_staging_bucket = "gs://my-agent-staging"
+
+# Optional: agent runtime settings (env MODEL_NAME / GOOGLE_CLOUD_LOCATION).
+# model_endpoint_location is intentionally decoupled from var.region;
+# "global" targets the global Gemini endpoint.
+# agent_model             = "gemini-3.1-flash-lite"
+# model_endpoint_location = "global"
+# agent_display_name      = "Mortgage Assistant Agent"
+
 # ==============================================================================
 # PSC INTERFACE - Private Service Connect for Agent Engine
 # ==============================================================================

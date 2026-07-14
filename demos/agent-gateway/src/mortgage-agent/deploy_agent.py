@@ -354,6 +354,31 @@ def main() -> None:
             "output `agent_mcp_invoker_email`. Default: $MCP_INVOKER_SA_EMAIL."
         ),
     )
+    parser.add_argument(
+        "--build-only",
+        action="store_true",
+        help=(
+            "Package and upload the agent artifacts (pickle, dependencies, "
+            "requirements) to the staging bucket and write a manifest JSON, "
+            "WITHOUT creating/updating a reasoning engine. Used to feed the "
+            "Terraform google_vertex_ai_reasoning_engine package_spec."
+        ),
+    )
+    parser.add_argument(
+        "--artifacts-out",
+        default=None,
+        help=(
+            "Path to write the build-only manifest JSON (artifact layout + "
+            "python_version + agent_framework + class_methods). Relative paths "
+            "resolve against the current directory. Default: "
+            "<repo>/build/agent_artifacts.json."
+        ),
+    )
+    parser.add_argument(
+        "--gcs-dir",
+        default="agent_engine",
+        help="Staging-bucket subdirectory for the uploaded artifacts (default: agent_engine).",
+    )
     args = parser.parse_args()
 
     if not args.project:
@@ -595,6 +620,62 @@ def main() -> None:
         if config:
             deploy_config.update(config)
 
+        if args.build_only:
+            # Stage the exact artifacts client.agent_engines.create() would
+            # upload (same pickle, deps tarball, requirements, class_methods),
+            # but do NOT create an engine. Terraform's package_spec consumes
+            # the resulting GCS URIs + class_methods via the manifest below.
+            # These _-prefixed helpers are SDK internals, safe only because the
+            # project pins google-cloud-aiplatform <1.154.
+            import json as _json
+
+            from vertexai._genai import _agent_engines_utils as _aeu
+
+            print(f"Build-only: staging artifacts to {staging_bucket}/{args.gcs_dir}/ (no engine create)...")
+            _aeu._prepare(
+                agent=app,
+                requirements=deploy_config["requirements"],
+                extra_packages=deploy_config["extra_packages"],
+                project=args.project,
+                location=args.region,
+                staging_bucket=staging_bucket,
+                gcs_dir_name=args.gcs_dir,
+            )
+            class_methods = [
+                _aeu._to_dict(s)
+                for s in _aeu._generate_class_methods_spec_or_raise(
+                    agent=app,
+                    operations=_aeu._get_registered_operations(agent=app),
+                )
+            ]
+            # Deliberately bucket-free: the manifest records only the artifact
+            # layout, so terraform composes the gs:// URIs from its own
+            # project_id/agent_staging_bucket. Keeps the file portable between
+            # projects (and safe to regenerate) instead of pinning one bucket.
+            manifest = {
+                "python_version": f"{sys.version_info.major}.{sys.version_info.minor}",
+                "agent_framework": _aeu._get_agent_framework(agent_framework=None, agent=app),
+                "gcs_dir": args.gcs_dir,
+                "pickle_filename": _aeu._BLOB_FILENAME,
+                "dependencies_filename": _aeu._EXTRA_PACKAGES_FILE,
+                "requirements_filename": _aeu._REQUIREMENTS_FILE,
+                "class_methods": class_methods,
+            }
+            if args.artifacts_out:
+                out_path = (
+                    args.artifacts_out
+                    if os.path.isabs(args.artifacts_out)
+                    else os.path.join(original_cwd, args.artifacts_out)
+                )
+            else:
+                out_path = os.path.join(agent_dir, "..", "..", "build", "agent_artifacts.json")
+            out_path = os.path.abspath(out_path)
+            os.makedirs(os.path.dirname(out_path), exist_ok=True)
+            with open(out_path, "w") as mf:
+                _json.dump(manifest, mf, indent=2)
+            print(f"Staged artifacts and wrote manifest ({len(class_methods)} class methods): {out_path}")
+            return
+
         if args.update:
             engine = client.agent_engines.update(name=args.update, agent=app, config=deploy_config)
         elif args.enable_agent_identity:
@@ -612,65 +693,21 @@ def main() -> None:
             agent_id = reasoning_engine_name.split("/")[-1]
             print(f"Identity shell successfully created. ID: {agent_id}")
 
-            # 2. Grant permissions
-            print("\nStep 2: Pre-authorizing egress permissions via grant_agent_mcp_egress.sh...")
-            import subprocess
-
-            tf_vars = {}
-            tfvars_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "../../terraform/terraform.tfvars")
-            if os.path.exists(tfvars_path):
-                with open(tfvars_path) as f:
-                    for line in f:
-                        if "=" in line and not line.strip().startswith("#"):
-                            k, v = line.split("=", 1)
-                            tf_vars[k.strip()] = v.strip().strip('"').strip("'")
-
-            project_id = args.project
-            project_number = None
-            org_id = tf_vars.get("organization_id") or os.environ.get("ORG_ID")
-            if not org_id:
-                print(
-                    "Error: Could not resolve organization_id/ORG_ID. Please set it in "
-                    "terraform.tfvars or as ORG_ID environment variable.",
-                    file=sys.stderr,
-                )
-                sys.exit(1)
-
-            try:
-                res = subprocess.run(
-                    ["gcloud", "projects", "describe", project_id, "--format=value(projectNumber)"],
-                    capture_output=True,
-                    text=True,
-                    check=True,
-                )
-                project_number = res.stdout.strip()
-            except Exception as e:
-                print(f"Warning: could not resolve project number via gcloud: {e}")
-                project_number = os.environ.get("PROJECT_NUMBER")
-                if not project_number:
-                    print(
-                        "Error: Could not resolve project number. Please set the PROJECT_NUMBER environment variable.",
-                        file=sys.stderr,
-                    )
-                    sys.exit(1)
-
-            env = os.environ.copy()
-            env["PROJECT_ID"] = project_id
-            env["PROJECT_NUMBER"] = project_number
-            env["ORG_ID"] = org_id
-            env["REGION"] = args.region
-
-            script_path = os.path.join(
-                os.path.dirname(os.path.abspath(__file__)), "../../scripts/grant_agent_mcp_egress.sh"
+            # 2. Grant permissions.
+            #
+            # The roles/iap.egressor bindings this step used to apply via
+            # scripts/grant_agent_mcp_egress.sh are now owned by terraform (see
+            # terraform/modules/agent-registry-endpoints). Terraform can't know
+            # this agent's id until it exists, so wire it up after the fact:
+            # set iap_egressor_members and re-apply. Until then the agent has an
+            # identity but no egress, and gateway calls will be denied by IAP.
+            print("\nStep 2: Egress permissions are managed by terraform.")
+            print("  Add this agent's identity to iap_egressor_members and re-apply:")
+            print(
+                "    principal://agents.global.org-${ORG_ID}.system.id.goog/resources/aiplatform"
+                f"/projects/${{PROJECT_NUMBER}}/locations/{args.region}/reasoningEngines/{agent_id}"
             )
-            if os.path.exists(script_path):
-                try:
-                    subprocess.run([script_path, "--agent-id", agent_id], env=env, check=True)
-                    print("Direct egress IAM permissions successfully applied!")
-                except Exception as e:
-                    print(f"Error executing grant_agent_mcp_egress.sh: {e}")
-            else:
-                print(f"Warning: grant_agent_mcp_egress.sh not found at {script_path}")
+            print("  (or set deploy_reasoning_engine=true and let terraform own the engine outright)")
 
             # 3. Update the agent with the actual pickled code
             print(f"\nStep 3: Updating reasoning engine {reasoning_engine_name} with actual application code...")

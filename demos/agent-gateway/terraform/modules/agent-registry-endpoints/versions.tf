@@ -17,8 +17,9 @@ terraform {
 
   required_providers {
     google = {
-      source  = "hashicorp/google"
-      version = ">= 7.39.0"
+      source = "hashicorp/google"
+      # 7.40.0 introduced google_iap_agent_registry_endpoint_iam_* / _mcp_server_iam_*.
+      version = ">= 7.40.0"
     }
   }
 }

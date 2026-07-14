@@ -365,6 +365,42 @@ variable "enable_agent_engine" {
   default     = false
 }
 
+variable "deploy_reasoning_engine" {
+  description = "Deploy the mortgage agent as a google_vertex_ai_reasoning_engine (declarative alternative to src/mortgage-agent/deploy_agent.py). Requires enable_agent_engine + enable_agent_gateway and prebuilt artifacts (see agent_artifacts_manifest_path). Also enables the per-agent MCP-server egressor bindings."
+  type        = bool
+  default     = false
+}
+
+variable "agent_artifacts_manifest_path" {
+  description = "Path to the build-only manifest JSON (artifact layout + python_version + class_methods) for the reasoning engine's package_spec. Defaults to ../build/agent_artifacts.json. Build with: cd src/mortgage-agent && uv run python deploy_agent.py --build-only ..."
+  type        = string
+  default     = null
+}
+
+variable "agent_staging_bucket" {
+  description = "GCS bucket (gs:// URI) holding the artifacts staged by `deploy_agent.py --build-only`. Must match that script's --staging-bucket. Defaults to gs://<project_id>-staging, the same convention the script uses."
+  type        = string
+  default     = null
+}
+
+variable "agent_model" {
+  description = "Gemini model id for the deployed agent (env MODEL_NAME)."
+  type        = string
+  default     = "gemini-3.1-flash-lite"
+}
+
+variable "model_endpoint_location" {
+  description = "Vertex model endpoint location for the deployed agent (env GOOGLE_CLOUD_LOCATION)."
+  type        = string
+  default     = "global"
+}
+
+variable "agent_display_name" {
+  description = "Display name for the deployed reasoning engine."
+  type        = string
+  default     = "Mortgage Assistant Agent"
+}
+
 # ==============================================================================
 # PSC INTERFACE CONFIGURATION
 # ==============================================================================
