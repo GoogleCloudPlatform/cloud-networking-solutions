@@ -86,7 +86,15 @@ resource "google_network_services_agent_gateway" "this" {
       content {
         domains        = dns_peering_config.value.domains
         target_project = dns_peering_config.value.target_project
-        target_network = dns_peering_config.value.target_network
+        # The AgentGateway API validates target_network by exact string match
+        # against the egress network attachment's network, which it reports in
+        # the partial "projects/<p>/global/networks/<n>" form. A full self-link
+        # URL fails validation ("... is in network X, not target network Y" for
+        # the same VPC), so strip the compute API prefix to the partial form.
+        target_network = trimprefix(
+          dns_peering_config.value.target_network,
+          "https://www.googleapis.com/compute/v1/"
+        )
       }
     }
   }
@@ -183,8 +191,12 @@ resource "google_network_security_authz_policy" "iap" {
 # When model_armor_authz_hosts is non-empty, scope the policy to the listed
 # Host header values via http_rules; otherwise the policy applies to all
 # gateway traffic.
+# Serialized after the IAP authz policy: both policies attach to the same Agent
+# Gateway, and the gateway backend allows only one mutating operation at a time
+# (concurrent creates fail with code 10 "another ongoing operation for the same
+# AgentGateway"). depends_on forces them to apply sequentially.
 resource "google_network_security_authz_policy" "model_armor" {
-  depends_on     = [time_sleep.wait_for_gateway]
+  depends_on     = [time_sleep.wait_for_gateway, google_network_security_authz_policy.iap]
   count          = var.enable_model_armor ? 1 : 0
   provider       = google-beta
   project        = var.project_id
