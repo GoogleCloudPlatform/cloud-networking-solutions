@@ -4,7 +4,7 @@ version = "1.0.3"
 description = "Agent for Data Commons stats deployed on Agent Runtime using public Data Commons MCP tools"
 requires-python = ">=3.11,<3.13"
 dependencies = [
-    "google-adk==1.31.1",
+    "google-adk==1.36.2",
     "google-genai",
     "pydantic",
     "google-cloud-aiplatform[agent_engines,adk]>=1.40.0",
