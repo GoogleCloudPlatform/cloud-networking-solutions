@@ -14,7 +14,9 @@
 
 """Deploy the mortgage assistant agent to Vertex AI Agent Engine.
 
-Uses the vertexai.agent_engines SDK to deploy the agent.
+Uses the vertexai.agent_engines SDK, with an `installation_scripts` hook that
+builds an overlay virtualenv in the container so the agent's dependencies layer
+over the base image instead of replacing it (see `_write_overlay_venv_script`).
 
 The agent discovers its MCP tools at runtime by listing `mcpServers` in the
 Agent Registry for `--project` / `--region`, so no per-service URL or URI
@@ -50,11 +52,77 @@ import argparse
 import json
 import os
 import shutil
+import stat
 import sys
 import tempfile
 import time
 import urllib.error
 import urllib.request
+
+# Contents of the installation script executed by step 16/29 of the Agent Engine
+# build ("Executing user-provided UNIX commands from scripts in
+# ./installation_scripts"), before the requirements install in step 19.
+#
+# DO NOT REMOVE THIS. It looks like a compileall workaround -- that is how it was
+# originally described -- but its load-bearing effect is to make /code/.venv an
+# *overlay* virtualenv: writable site-packages of its own, plus
+# `include-system-site-packages = true` so the base image's interpreter packages
+# remain importable underneath. Step 19's `pip install` then lands in the overlay
+# and layers over the base image rather than overwriting it.
+#
+# Without this, step 19 installs straight onto the site-packages that the
+# platform's own serving harness imports from, and any unpinned requirement is
+# free to move a package the harness depends on. That happened on 2026-07-28:
+# the resolve advanced grpcio 1.82.1 -> 1.83.0 and
+# opentelemetry-resourcedetector-gcp 1.12.0a0 -> 1.14.0, and newly injected
+# httpx/httpcore/packaging that the base image had been satisfying. The build
+# stayed green and the image pushed, but the container then died during harness
+# import -- before uvicorn logged its first line -- so the deploy failed with
+# "failed to start and cannot serve traffic" and *zero* stderr to debug from.
+#
+# The base image does ship a usable .venv/bin/python for compileall on its own,
+# so the build gives no signal that this is missing. Only the runtime does.
+_OVERLAY_VENV_SCRIPT = """\
+#!/bin/bash
+# Create an overlay virtualenv at /code/.venv so the agent's dependency install
+# layers over the base image instead of replacing its site-packages.
+#
+# `include-system-site-packages = true` keeps the base image's packages (and the
+# platform's serving harness) importable, while site-packages here is writable by
+# appuser -- a bare symlink would make site.getsitepackages()[0] resolve to the
+# root-owned /usr/local/lib/python3.12/site-packages and fail with PermissionError.
+set -e
+PYTHON3=$(which python3)
+PY_VER=$(python3 -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')
+mkdir -p /code/.venv/bin
+mkdir -p /code/.venv/lib/python${PY_VER}/site-packages
+ln -sf "$PYTHON3" /code/.venv/bin/python
+ln -sf "$PYTHON3" /code/.venv/bin/python3
+cat > /code/.venv/pyvenv.cfg << PYCFG
+home = $(dirname $PYTHON3)
+include-system-site-packages = true
+PYCFG
+echo "Created .venv virtualenv (site-packages: /code/.venv/lib/python${PY_VER}/site-packages)"
+"""
+
+# Path of the script within the staging dir. The platform looks for
+# `./installation_scripts` at the root of the extracted dependencies tarball, so
+# this must also be listed in `extra_packages` -- `build_options` alone only
+# covers the SDK create path, not a Terraform `package_spec` deploy built by
+# `--build-only`.
+_OVERLAY_VENV_SCRIPT_PATH = "installation_scripts/create_venv.sh"
+
+
+def _write_overlay_venv_script(staging_dir: str) -> None:
+    """Write the overlay-venv installation script into ``staging_dir``.
+
+    See ``_OVERLAY_VENV_SCRIPT`` for why this is required.
+    """
+    script_path = os.path.join(staging_dir, _OVERLAY_VENV_SCRIPT_PATH)
+    os.makedirs(os.path.dirname(script_path), exist_ok=True)
+    with open(script_path, "w") as f:
+        f.write(_OVERLAY_VENV_SCRIPT)
+    os.chmod(script_path, stat.S_IRWXU | stat.S_IRGRP | stat.S_IXGRP)
 
 
 def _ge_deploy(
@@ -526,6 +594,7 @@ def main() -> None:
             os.path.join(staging_dir, "agent"),
             ignore=shutil.ignore_patterns("__pycache__", "*.pyc", ".pytest_cache"),
         )
+        _write_overlay_venv_script(staging_dir)
 
         os.chdir(staging_dir)
 
@@ -559,7 +628,14 @@ def main() -> None:
                 "opentelemetry-instrumentation-google-genai",
                 "opentelemetry-exporter-gcp-logging",
             ],
-            extra_packages=["agent"],
+            # The script must be in extra_packages, not just build_options:
+            # build_options is only honoured by the SDK create path, while a
+            # terraform package_spec deploy consumes the dependencies tarball
+            # directly. Listing it here puts it in the tarball either way, which
+            # is all Step 16 needs to find ./installation_scripts. Both are kept
+            # so the imperative path behaves identically.
+            extra_packages=["agent", _OVERLAY_VENV_SCRIPT_PATH],
+            build_options={"installation_scripts": [_OVERLAY_VENV_SCRIPT_PATH]},
             env_vars={
                 # Make denied MCP tool calls (gateway 403) fail fast instead of
                 # hanging the turn as a broken-stream TaskGroup/TimeoutError.
