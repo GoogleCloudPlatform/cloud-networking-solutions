@@ -14,8 +14,7 @@
 
 """Deploy the mortgage assistant agent to Vertex AI Agent Engine.
 
-Uses the vertexai.agent_engines SDK with build_options to deploy the agent
-and work around the .venv/bin/python platform bug.
+Uses the vertexai.agent_engines SDK to deploy the agent.
 
 The agent discovers its MCP tools at runtime by listing `mcpServers` in the
 Agent Registry for `--project` / `--region`, so no per-service URL or URI
@@ -51,7 +50,6 @@ import argparse
 import json
 import os
 import shutil
-import stat
 import sys
 import tempfile
 import time
@@ -519,39 +517,6 @@ def main() -> None:
             ignore=shutil.ignore_patterns("__pycache__", "*.pyc", ".pytest_cache"),
         )
 
-        # Create installation_scripts/ with a workaround for the
-        # platform bug where .venv/bin/python doesn't exist in the
-        # base image but the Dockerfile's compileall step expects it.
-        scripts_dir = os.path.join(staging_dir, "installation_scripts")
-        os.makedirs(scripts_dir)
-        script_path = os.path.join(scripts_dir, "create_venv.sh")
-        with open(script_path, "w") as f:
-            f.write("#!/bin/bash\n")
-            f.write("# Workaround: create a proper .venv for the compileall\n")
-            f.write("# step (step 20/21). The base image's Dockerfile runs:\n")
-            f.write("#   .venv/bin/python -m compileall \\\n")
-            f.write('#     "$(.venv/bin/python -c \\"import site; print(site.getsitepackages()[0])\\")"\n')
-            f.write("# A plain symlink causes site.getsitepackages()[0] to\n")
-            f.write("# return /usr/local/lib/python3.12/site-packages/ which\n")
-            f.write("# is root-owned => PermissionError as appuser.\n")
-            f.write("# Fix: create pyvenv.cfg so Python treats .venv/ as a\n")
-            f.write("# virtualenv with writable site-packages.\n")
-            f.write("set -e\n")
-            f.write("PYTHON3=$(which python3)\n")
-            f.write(
-                "PY_VER=$(python3 -c 'import sys; print(f\"{sys.version_info.major}.{sys.version_info.minor}\")')\n"
-            )
-            f.write("mkdir -p /code/.venv/bin\n")
-            f.write("mkdir -p /code/.venv/lib/python${PY_VER}/site-packages\n")
-            f.write('ln -sf "$PYTHON3" /code/.venv/bin/python\n')
-            f.write('ln -sf "$PYTHON3" /code/.venv/bin/python3\n')
-            f.write("cat > /code/.venv/pyvenv.cfg << PYCFG\n")
-            f.write("home = $(dirname $PYTHON3)\n")
-            f.write("include-system-site-packages = true\n")
-            f.write("PYCFG\n")
-            f.write('echo "Created .venv virtualenv (site-packages: /code/.venv/lib/python${PY_VER}/site-packages)"\n')
-        os.chmod(script_path, stat.S_IRWXU | stat.S_IRGRP | stat.S_IXGRP)
-
         os.chdir(staging_dir)
 
         deploy_config = dict(
@@ -584,15 +549,7 @@ def main() -> None:
                 "opentelemetry-instrumentation-google-genai",
                 "opentelemetry-exporter-gcp-logging",
             ],
-            extra_packages=[
-                "agent",
-                "installation_scripts/create_venv.sh",
-            ],
-            build_options={
-                "installation_scripts": [
-                    "installation_scripts/create_venv.sh",
-                ],
-            },
+            extra_packages=["agent"],
             env_vars={
                 # Make denied MCP tool calls (gateway 403) fail fast instead of
                 # hanging the turn as a broken-stream TaskGroup/TimeoutError.
