@@ -16,6 +16,20 @@
 
 import logging
 import os
+
+# Monkeypatch vertexai to disable the telemetry API check which fails with mTLS SSL handshake errors through the Agent Gateway.
+try:
+    import vertexai.agent_engines.templates.adk as adk_template
+    adk_template._warn_if_telemetry_api_disabled = lambda: None
+except Exception:
+    pass
+
+try:
+    import vertexai.preview.reasoning_engines.templates.adk as preview_adk_template
+    preview_adk_template._warn_if_telemetry_api_disabled = lambda *args, **kwargs: None
+except Exception:
+    pass
+
 from typing import Any
 from urllib.parse import urlparse
 
@@ -505,6 +519,69 @@ def _discover_mcp_toolsets() -> list:
     return _CACHED_TOOLSETS
 
 
+class _LazyToolsList(list):
+    """A lazy sequence wrapper that delegates to list but evaluates discovered tools on-demand."""
+
+    def __init__(self, base_tools):
+        super().__init__()
+        self._base_tools = list(base_tools)
+        self.extend(self._base_tools)
+        self._loaded = False
+
+    def _ensure_loaded(self):
+        if not self._loaded:
+            self._loaded = True
+            try:
+                mcp_tools = _discover_mcp_toolsets()
+                self.clear()
+                self.extend(self._base_tools)
+                self.extend(mcp_tools)
+            except Exception:
+                logger.exception("Failed to lazy-load MCP tools")
+
+    def __len__(self):
+        self._ensure_loaded()
+        return super().__len__()
+
+    def __iter__(self):
+        self._ensure_loaded()
+        return super().__iter__()
+
+    def __getitem__(self, index):
+        self._ensure_loaded()
+        return super().__getitem__(index)
+
+    def __bool__(self):
+        self._ensure_loaded()
+        return super().__bool__()
+
+    def __add__(self, other):
+        self._ensure_loaded()
+        return super().__add__(other)
+
+    def __radd__(self, other):
+        self._ensure_loaded()
+        return other + list(self)
+
+    def __eq__(self, other):
+        self._ensure_loaded()
+        return super().__eq__(other)
+
+    def __repr__(self):
+        if not self._loaded:
+            return f"<_LazyToolsList [not loaded, base={self._base_tools}]>"
+        return super().__repr__()
+
+
+def _lazy_instruction_provider(ctx=None) -> str:
+    """Dynamic instruction provider that triggers tool discovery and formats instructions."""
+    try:
+        _discover_mcp_toolsets()
+    except Exception:
+        logger.exception("Failed to discover MCP toolsets in dynamic instruction provider")
+    return _INSTRUCTION_TEMPLATE.format(mcp_services_doc=_render_mcp_services_doc())
+
+
 class _PickleSafeAgent(Agent):
     """Agent that rebuilds with MCP tools when unpickled or deep-copied."""
 
@@ -520,13 +597,11 @@ def _build_agent():
 
     Called at import time for local dev, and at unpickle time on Agent Engine.
     """
-    _tools: list = [
+    _base_tools: list = [
         tools.get_current_time,
         tools.list_mcp_connections,
     ]
-    _tools.extend(_discover_mcp_toolsets())
-
-    instruction = _INSTRUCTION_TEMPLATE.format(mcp_services_doc=_render_mcp_services_doc())
+    _tools = _LazyToolsList(_base_tools)
 
     return _PickleSafeAgent(
         model=os.environ.get("MODEL_NAME", "gemini-3.1-flash-lite"),
@@ -535,7 +610,7 @@ def _build_agent():
             "A mortgage underwriting assistant that connects to legacy document management, "
             "income verification, and corporate email systems through an Agent Gateway."
         ),
-        instruction=instruction,
+        instruction=_lazy_instruction_provider,
         tools=_tools,
         on_tool_error_callback=_handle_tool_error,
     )

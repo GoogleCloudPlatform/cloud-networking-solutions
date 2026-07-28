@@ -627,6 +627,38 @@ def main() -> None:
                 "pydantic",
                 "opentelemetry-instrumentation-google-genai",
                 "opentelemetry-exporter-gcp-logging",
+                # --- Transitive pins -------------------------------------
+                # Nothing above changes version between builds, but their
+                # transitives resolve fresh every time, so an unchanged source
+                # tree produces a different container week to week. These are
+                # the twelve that drifted between the last known-good build
+                # (2026-07-14, build c7e12542) and 2026-07-28, pinned back to
+                # the known-good versions. Reproducing that resolve exactly is
+                # the point -- the 2026-07-28 container died during harness
+                # import, before uvicorn logged a line, leaving no stderr.
+                #
+                # The most likely culprit is the opentelemetry-*-gcp skew:
+                # resourcedetector-gcp went 1.12.0a0 -> 1.14.0 while the
+                # exporters stayed on 1.12.0a0, and GCP resource detection runs
+                # during startup. grpcio 1.82.1 -> 1.83.0 is the other
+                # candidate. Both are pinned here rather than bisected, because
+                # each deploy round trip costs ~9 minutes.
+                #
+                # These are transitives, so they are deliberately NOT mirrored
+                # into pyproject.toml -- that file describes the local dev
+                # environment, and uv.lock already pins it.
+                "aiohttp==3.14.1",
+                "google-cloud-bigtable==2.40.0",
+                "google-cloud-secret-manager==2.29.0",
+                "greenlet==3.5.3",
+                "grpcio==1.82.1",
+                "grpcio-status==1.81.1",
+                "joserfc==1.7.3",
+                "mcp==1.28.1",
+                "opentelemetry-resourcedetector-gcp==1.12.0a0",
+                "sse-starlette==3.4.5",
+                "wrapt==2.2.2",
+                "yarl==1.24.2",
             ],
             # The script must be in extra_packages, not just build_options:
             # build_options is only honoured by the SDK create path, while a

@@ -15,6 +15,10 @@ override.tf.json
 *.tfplan
 tfplan
 terraform/modules/**/.terraform.lock.hcl
+terraform/state.json
+terraform/show.json
+terraform/state_list.txt
+
 
 # Python
 __pycache__/

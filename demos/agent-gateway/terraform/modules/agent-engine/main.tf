@@ -62,6 +62,14 @@ resource "google_project_iam_member" "agent_identity_agent_registry_viewer" {
   member  = local.agent_identity_principal
 }
 
+# Required for the Vertex AI service agent to list MCP servers on behalf of the agent
+resource "google_project_iam_member" "aiplatform_re_agent_registry_viewer" {
+  project = var.project_id
+  role    = "roles/agentregistry.viewer"
+  member  = "serviceAccount:service-${var.project_number}@gcp-sa-aiplatform-re.iam.gserviceaccount.com"
+}
+
+
 resource "google_project_iam_member" "agent_identity_log_writer" {
   project = var.project_id
   role    = "roles/logging.logWriter"
@@ -185,10 +193,25 @@ resource "google_vertex_ai_reasoning_engine" "mortgage" {
   provider = google-beta
 
   # Do not create the engine until the agent principalSet can actually egress
-  # to the registered endpoints. Without this the two are unordered: the
-  # bindings key on a principalSet string that is independent of the engine, so
-  # Terraform is free to boot the container before the grants land.
-  depends_on = [terraform_data.engine_gate]
+  # to the registered endpoints, and all baseline IAM roles are fully applied.
+  # Without this, the IAM roles and engine are unordered, so Terraform may
+  # boot the container before its permissions propagate, leading to silent
+  # Error Code 3 container startup crashes.
+  depends_on = [
+    terraform_data.engine_gate,
+    google_project_iam_member.agent_identity_service_usage,
+    google_project_iam_member.agent_identity_browser,
+    google_project_iam_member.agent_identity_express_user,
+    google_project_iam_member.agent_identity_aiplatform_user,
+    google_project_iam_member.agent_identity_api_registry_viewer,
+    google_project_iam_member.agent_identity_agent_registry_viewer,
+    google_project_iam_member.aiplatform_re_agent_registry_viewer,
+    google_project_iam_member.agent_identity_log_writer,
+    google_project_iam_member.agent_identity_metric_writer,
+    google_project_iam_member.agent_identity_trace_agent,
+    google_project_iam_member.agent_identity_telemetry_writer,
+    google_project_iam_member.agent_identity_token_creator,
+  ]
 
   project      = var.project_id
   region       = var.region
