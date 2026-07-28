@@ -93,3 +93,9 @@ variable "agent_display_name" {
   type        = string
   default     = "Mortgage Assistant Agent"
 }
+
+variable "engine_depends_on" {
+  description = "Opaque values the reasoning engine must wait for before it is created. Intended for the agent-registry-endpoints module's endpoint_egressor_binding_ids, so the agent's roles/iap.egressor grants exist before the container boots and starts egressing through the gateway. Value is never read; only its dependency edge matters."
+  type        = any
+  default     = null
+}

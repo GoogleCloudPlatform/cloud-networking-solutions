@@ -171,9 +171,24 @@ locals {
   }
 }
 
+# Ordering gate. `depends_on` only accepts static references, so route the
+# caller's dependency values through a terraform_data node the engine can point
+# at. Creates no cloud resource; it exists purely to carry the edge from the
+# endpoint roles/iap.egressor bindings to the engine below.
+resource "terraform_data" "engine_gate" {
+  count = var.deploy_reasoning_engine ? 1 : 0
+  input = var.engine_depends_on
+}
+
 resource "google_vertex_ai_reasoning_engine" "mortgage" {
   count    = var.deploy_reasoning_engine ? 1 : 0
   provider = google-beta
+
+  # Do not create the engine until the agent principalSet can actually egress
+  # to the registered endpoints. Without this the two are unordered: the
+  # bindings key on a principalSet string that is independent of the engine, so
+  # Terraform is free to boot the container before the grants land.
+  depends_on = [terraform_data.engine_gate]
 
   project      = var.project_id
   region       = var.region

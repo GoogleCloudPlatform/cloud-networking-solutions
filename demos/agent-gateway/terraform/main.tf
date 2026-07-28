@@ -301,6 +301,15 @@ module "agent_engine" {
   model_endpoint_location       = var.model_endpoint_location
   agent_display_name            = var.agent_display_name
 
+  # Hold the engine until the agent principalSet holds roles/iap.egressor on the
+  # registered endpoints (googleapis + custom), so it can egress the moment it
+  # boots. Passed as a value rather than a module-level depends_on on purpose:
+  # agent_registry_endpoints also consumes this module's per-agent identity for
+  # its MCP-server bindings, and a module-level edge would make that a cycle.
+  # At resource granularity there is none — the engine precedes the MCP
+  # bindings and follows the endpoint bindings.
+  engine_depends_on = var.enable_agent_registry_endpoints ? module.agent_registry_endpoints[0].endpoint_egressor_binding_ids : null
+
   depends_on = [module.foundation]
 }
 
