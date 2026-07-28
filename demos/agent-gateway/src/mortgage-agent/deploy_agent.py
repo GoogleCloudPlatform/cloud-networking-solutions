@@ -301,8 +301,8 @@ def main() -> None:
     )
     parser.add_argument(
         "--model",
-        default="gemini-3.1-flash-lite",
-        help="Gemini model name for the agent (default: gemini-3.1-flash-lite)",
+        default="gemini-3.5-flash-lite",
+        help="Gemini model name for the agent (default: gemini-3.5-flash-lite)",
     )
     parser.add_argument(
         "--model-endpoint-location",
@@ -349,7 +349,8 @@ def main() -> None:
             "OIDC ID tokens for MCP Cloud Run calls. The agent's identity must hold "
             "roles/iam.serviceAccountTokenCreator on this SA, and this SA must hold "
             "roles/run.invoker on each MCP Cloud Run service. Sourced from terraform "
-            "output `agent_mcp_invoker_email`. Default: $MCP_INVOKER_SA_EMAIL."
+            "output `agent_mcp_invoker_email`. Default: $MCP_INVOKER_SA_EMAIL, "
+            "falling back to agent-mcp-invoker@<project>.iam.gserviceaccount.com."
         ),
     )
     parser.add_argument(
@@ -381,6 +382,15 @@ def main() -> None:
 
     if not args.project:
         parser.error("--project is required (or set $PROJECT_ID)")
+
+    # Fall back to the SA terraform creates in modules/agent-engine, whose
+    # account_id is hardcoded to "agent-mcp-invoker" — so the email is fully
+    # determined by the project and doesn't need `terraform output`. Derived
+    # from args.project (which itself defaults to $PROJECT_ID) so an explicit
+    # --project is honoured too. Deploys that don't use MCP-over-Cloud-Run are
+    # unaffected: the agent only impersonates this SA when it calls one.
+    if not args.mcp_invoker_sa:
+        args.mcp_invoker_sa = f"agent-mcp-invoker@{args.project}.iam.gserviceaccount.com"
 
     ge_deploy_needed = args.ge_deploy or args.ge_deploy_only
     oauth_client_secret = None
