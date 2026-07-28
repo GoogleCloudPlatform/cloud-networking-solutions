@@ -60,6 +60,12 @@ variable "cloudbuild_bucket_name" {
   default     = null
 }
 
+variable "cloudbuild_bucket_force_destroy" {
+  description = "Allow `terraform destroy` to delete the Cloud Build source bucket while it still holds objects. Defaults to true because the bucket only ever holds disposable build sources and logs (it already expires them after 30 days), and every `skaffold run` repopulates it — with force_destroy off, teardown of a demo project always fails on a non-empty bucket. Set to false if you repoint the bucket at something you care about keeping."
+  type        = bool
+  default     = true
+}
+
 # ==============================================================================
 # NETWORKING CONFIGURATION
 # ==============================================================================

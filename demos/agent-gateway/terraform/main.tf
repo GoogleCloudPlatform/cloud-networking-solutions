@@ -156,7 +156,7 @@ resource "google_storage_bucket" "cloudbuild" {
   name                        = coalesce(var.cloudbuild_bucket_name, "${var.project_id}_cloudbuild")
   location                    = var.region
   uniform_bucket_level_access = true
-  force_destroy               = false
+  force_destroy               = var.cloudbuild_bucket_force_destroy
 
   lifecycle_rule {
     condition {
