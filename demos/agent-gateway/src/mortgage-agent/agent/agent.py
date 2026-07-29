@@ -604,7 +604,7 @@ def _build_agent():
     _tools = _LazyToolsList(_base_tools)
 
     return _PickleSafeAgent(
-        model=os.environ.get("MODEL_NAME", "gemini-3.1-flash-lite"),
+        model=os.environ.get("MODEL_NAME", "gemini-3.5-flash-lite"),
         name="mortgage_assistant_agent",
         description=(
             "A mortgage underwriting assistant that connects to legacy document management, "

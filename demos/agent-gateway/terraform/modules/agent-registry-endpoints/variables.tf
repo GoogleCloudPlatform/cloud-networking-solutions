@@ -34,6 +34,8 @@ variable "google_api_endpoints" {
     "https://{region}-aiplatform.mtls.googleapis.com",
     "https://{region}-aiplatform.googleapis.com",
     "https://aiplatform.{region}.rep.googleapis.com",
+    "https://storage.googleapis.com",
+    "https://storage.mtls.googleapis.com",
   ]
 }
 

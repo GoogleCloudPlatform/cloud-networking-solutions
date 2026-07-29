@@ -79,7 +79,7 @@ variable "agent_staging_bucket" {
 variable "agent_model" {
   description = "Gemini model id for the agent (env MODEL_NAME)."
   type        = string
-  default     = "gemini-3.1-flash-lite"
+  default     = "gemini-3.5-flash-lite"
 }
 
 variable "model_endpoint_location" {

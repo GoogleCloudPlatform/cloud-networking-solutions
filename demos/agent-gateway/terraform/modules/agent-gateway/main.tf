@@ -215,21 +215,21 @@ resource "google_network_security_authz_policy" "model_armor" {
     }
   }
 
-  dynamic "http_rules" {
-    for_each = length(var.model_armor_authz_hosts) > 0 ? [1] : []
-    content {
-      to {
-        operations {
-          dynamic "hosts" {
-            for_each = var.model_armor_authz_hosts
-            content {
-              exact = hosts.value
-            }
-          }
-        }
-      }
-    }
-  }
+  # dynamic "http_rules" {
+  #   for_each = length(var.model_armor_authz_hosts) > 0 ? [1] : []
+  #   content {
+  #     to {
+  #       operations {
+  #         dynamic "hosts" {
+  #           for_each = var.model_armor_authz_hosts
+  #           content {
+  #             exact = hosts.value
+  #           }
+  #         }
+  #       }
+  #     }
+  #   }
+  # }
 }
 
 # IAM for the gateway's service-extensions service account (Model Armor path

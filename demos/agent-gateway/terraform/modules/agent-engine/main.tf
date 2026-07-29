@@ -191,6 +191,7 @@ resource "terraform_data" "engine_gate" {
 resource "google_vertex_ai_reasoning_engine" "mortgage" {
   count    = var.deploy_reasoning_engine ? 1 : 0
   provider = google-beta
+  deletion_policy = "FORCE"
 
   # Do not create the engine until the agent principalSet can actually egress
   # to the registered endpoints, and all baseline IAM roles are fully applied.
