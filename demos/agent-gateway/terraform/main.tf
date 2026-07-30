@@ -389,9 +389,25 @@ resource "google_dns_record_set" "apigee_northbound" {
 module "mcp_services" {
   source = "./modules/mcp-cloud-run"
 
-  project_id              = var.project_id
-  region                  = var.region
-  services                = var.mcp_services
+  project_id = var.project_id
+  region     = var.region
+
+  # `source_dir` is consumed at the root (images.tf) rather than passed down;
+  # the module only ever sees a resolved image URI — either the tag Cloud Build
+  # just pushed, or the prebuilt image pinned in tfvars.
+  services = {
+    for k, v in var.mcp_services : k => {
+      image              = local.mcp_image_uri[k]
+      container_port     = v.container_port
+      otel_service_name  = v.otel_service_name
+      min_instance_count = v.min_instance_count
+      max_instance_count = v.max_instance_count
+      cpu                = v.cpu
+      memory             = v.memory
+      env                = v.env
+    }
+  }
+
   private_networking      = var.enable_cloud_run_private_networking
   mcp_internal_dns_domain = local.mcp_internal_dns_domain_or_null
   # Restricts roles/run.invoker to the agent-mcp-invoker SA. Null when
@@ -399,7 +415,14 @@ module "mcp_services" {
   # and Cloud Run is unreachable until invoker is granted out-of-band.
   invoker_sa_email = var.enable_agent_engine ? module.agent_engine[0].agent_mcp_invoker_email : null
 
-  depends_on = [module.foundation, google_artifact_registry_repository.registry]
+  # terraform_data.mcp_image must finish pushing before Cloud Run pulls the tag.
+  # The dependency is not implicit: the image URI is derived from a source hash,
+  # not from an attribute of the build resource.
+  depends_on = [
+    module.foundation,
+    google_artifact_registry_repository.registry,
+    terraform_data.mcp_image,
+  ]
 }
 
 # When the Agent Gateway is enabled, allocate the MCP internal LB VIP from the

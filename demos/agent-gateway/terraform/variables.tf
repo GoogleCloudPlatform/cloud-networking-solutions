@@ -61,9 +61,15 @@ variable "cloudbuild_bucket_name" {
 }
 
 variable "cloudbuild_bucket_force_destroy" {
-  description = "Allow `terraform destroy` to delete the Cloud Build source bucket while it still holds objects. Defaults to true because the bucket only ever holds disposable build sources and logs (it already expires them after 30 days), and every `skaffold run` repopulates it — with force_destroy off, teardown of a demo project always fails on a non-empty bucket. Set to false if you repoint the bucket at something you care about keeping."
+  description = "Allow `terraform destroy` to delete the Cloud Build source bucket while it still holds objects. Defaults to true because the bucket only ever holds disposable build sources and logs (it already expires them after 30 days), and every MCP image build repopulates it — with force_destroy off, teardown of a demo project always fails on a non-empty bucket. Set to false if you repoint the bucket at something you care about keeping."
   type        = bool
   default     = true
+}
+
+variable "cloudbuild_service_account" {
+  description = "Service account email that MCP image builds run as. Leave null to let Cloud Build use the Compute Engine default SA, which is what the IAM grants in main.tf provision and is correct for most projects. Projects created with the default Compute SA disabled (an org policy on newer projects) reject builds that omit an explicit service account — set this to a build SA holding roles/storage.objectViewer on the source bucket and roles/artifactregistry.writer."
+  type        = string
+  default     = null
 }
 
 # ==============================================================================
@@ -183,9 +189,10 @@ variable "mcp_internal_dns_zone" {
 }
 
 variable "mcp_services" {
-  description = "Map of MCP service name to deployment configuration. The map key becomes the Cloud Run service name AND the URL-mask token (e.g. legacy-dms.<mcp_internal_dns_zone.domain> -> Cloud Run service 'legacy-dms')."
+  description = "Map of MCP service name to deployment configuration. The map key becomes the Cloud Run service name AND the URL-mask token (e.g. legacy-dms.<mcp_internal_dns_zone.domain> -> Cloud Run service 'legacy-dms'). `source_dir` names the directory under src/ holding the Dockerfile; it is not always the map key (income-verification is built from src/income-verification-api). Leave `image` null to have `terraform apply` build and push the image via Cloud Build; set it to pin a prebuilt image and skip the build entirely."
   type = map(object({
-    image              = string
+    source_dir         = string
+    image              = optional(string)
     container_port     = optional(number, 8080)
     otel_service_name  = optional(string)
     min_instance_count = optional(number, 0)

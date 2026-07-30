@@ -39,6 +39,7 @@ agent-gateway/
 │   └── mortgage-agent/              # Python — ADK agent + deploy_agent.py
 ├── terraform/
 │   ├── main.tf, variables.tf, outputs.tf, backend.tf, versions.tf
+│   ├── images.tf                    # Cloud Build of src/* during apply
 │   ├── example.tfvars, example.backend.conf
 │   └── modules/
 │       ├── foundation/              # Project services, APIs, IAM
@@ -51,11 +52,6 @@ agent-gateway/
 │       ├── mcp-cloud-run/           # Cloud Run services + per-svc runtime SAs
 │       ├── mcp-internal-lb/         # Internal ALB + Serverless NEG (private)
 │       └── model-armor/             # Model Armor templates + DLP integration
-├── cloudrun/                        # Cloud Run service templates (envsubst)
-│   ├── corporate-email.yaml.tmpl
-│   ├── income-verification-api.yaml.tmpl
-│   └── legacy-dms.yaml.tmpl
-├── skaffold.yaml.tmpl               # Multi-service build + Cloud Run deploy
 ├── codelab.md                       # Full walkthrough (source of truth)
 └── docs/architecture.png
 ```
@@ -65,10 +61,11 @@ agent-gateway/
 - A Google Cloud project with billing enabled
 - `gcloud` (Cloud SDK)
 - `terraform` >= 1.5
-- [`skaffold`](https://skaffold.dev/) for image builds
 - Python 3.12+ with [`uv`](https://docs.astral.sh/uv/)
-- `envsubst` (gettext) and `jq` — Cloud Shell already has these
 - (Secure path only) A public DNS zone you own, used for the LB cert
+
+`terraform apply` shells out to `gcloud builds submit` for the MCP images, so
+`gcloud` must be on `PATH` with working application-default credentials.
 
 ## Quick start
 
@@ -97,35 +94,24 @@ cp terraform/example.backend.conf terraform/backend.conf
 cp terraform/example.tfvars terraform/terraform.tfvars
 # Edit terraform/terraform.tfvars (see codelab.md for the variable reference)
 
-# 4. Deploy infrastructure
+# 4. Deploy infrastructure, and build + deploy the MCP servers.
+#    Each src/<source_dir> is built by regional Cloud Build during the apply
+#    and tagged with a hash of its source, so re-applying without touching
+#    src/ rebuilds nothing. No separate build step.
 cd terraform
 terraform init -backend-config=backend.conf
 terraform plan
 terraform apply
 cd ..
 
-# 5. Render skaffold + cloudrun manifests. MCP_INGRESS comes from a
-#    Terraform output that mirrors enable_cloud_run_private_networking,
-#    so the rendered Cloud Run YAML stays in sync with Terraform state.
-export MCP_INGRESS=$(cd terraform && terraform output -raw mcp_cloud_run_ingress_annotation)
-envsubst '${PROJECT_ID} ${REGION} ${MCP_INGRESS}' < skaffold.yaml.tmpl > skaffold.yaml
-for f in cloudrun/*.yaml.tmpl; do
-  envsubst '${PROJECT_ID} ${REGION} ${MCP_INGRESS}' < "$f" > "${f%.tmpl}"
-done
-
-# 6. Build images and deploy MCP services
-gcloud projects add-iam-policy-binding ${PROJECT_ID} \
-  --member="user:$(gcloud config get-value account)" \
-  --role="roles/iam.serviceAccountUser"
-skaffold run
-
-# 7. Deploy the mortgage agent to Agent Runtime. Two options:
+# 5. Deploy the mortgage agent to Agent Runtime. Two options:
 #
-# 7a. Terraform-managed (recommended). Terraform owns the reasoning engine
+# 5a. Terraform-managed (recommended). Terraform owns the reasoning engine
 #     (package_spec) AND the per-agent MCP-server egress grants. Because a
 #     reasoning engine is deployed from prebuilt artifacts, this is two-phase:
-#     step 4 already created the registry/invoker SA/gateway; now build the
-#     artifacts, then flip deploy_reasoning_engine and re-apply.
+#     step 4 already created the registry/invoker SA/gateway and the MCP
+#     servers; now build the artifacts, then flip deploy_reasoning_engine and
+#     re-apply.
 cd src/mortgage-agent
 uv sync
 uv run python deploy_agent.py --build-only \
@@ -143,7 +129,7 @@ cd terraform
 terraform apply -var deploy_reasoning_engine=true   # or set it in your tfvars
 cd ..
 #
-# 7b. Imperative (kept as-is; also the path for Gemini Enterprise --ge-deploy):
+# 5b. Imperative (kept as-is; also the path for Gemini Enterprise --ge-deploy):
 cd src/mortgage-agent
 uv sync
 uv run python deploy_agent.py \
@@ -154,13 +140,13 @@ uv run python deploy_agent.py \
   --model-endpoint-location=global
 cd ../..
 
-# 8. Egress IAM (roles/iap.egressor) is Terraform-managed:
+# 6. Egress IAM (roles/iap.egressor) is Terraform-managed:
 #    - Endpoints (Google-API + custom services): granted to the agent
 #      principalSet, applied by `terraform apply` in step 4.
 #    - MCP servers (legacy-dms, income-verification, corporate-email): granted
-#      to the deployed agent's per-agent identity when option 7a is used
+#      to the deployed agent's per-agent identity when option 5a is used
 #      (deploy_reasoning_engine=true). corporate-email is restricted to
-#      read-only tools via an IAM condition. With option 7b, MCP egress is not
+#      read-only tools via an IAM condition. With option 5b, MCP egress is not
 #      Terraform-managed (the agent identity is created outside Terraform).
 ```
 

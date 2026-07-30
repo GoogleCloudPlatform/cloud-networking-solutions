@@ -122,11 +122,6 @@ output "mcp_internal_dns_domain" {
   value       = module.networking.mcp_internal_dns_domain
 }
 
-output "mcp_cloud_run_ingress_annotation" {
-  description = "Cloud Run v1 ingress annotation value to use when rendering cloudrun/*.yaml.tmpl. Mirrors the ingress chosen by the mcp-cloud-run module based on enable_cloud_run_private_networking, so skaffold-rendered manifests stay in sync with terraform state."
-  value       = var.enable_cloud_run_private_networking ? "internal-and-cloud-load-balancing" : "all"
-}
-
 # Artifact Registry Outputs
 
 output "artifact_registry_id" {

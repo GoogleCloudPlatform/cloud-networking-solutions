@@ -95,24 +95,26 @@ mcp_lb_protocol = "HTTPS"
 # Cloud Run service name AND the URL-mask token (e.g. legacy-dms ->
 # legacy-dms.${mcp_internal_dns_zone.domain}). Adding a new service is a Cloud
 # Run deploy plus one entry in this map (a DNS A record is added automatically).
-# The `us-docker.pkg.dev/cloudrun/container/placeholder` image is a Google-
-# provided stub; replace with your own image in Artifact Registry before the
-# service handles real traffic (Skaffold deploys overwrite the image tag).
+# `source_dir` names the directory under src/ holding the Dockerfile; it is not
+# always the map key (income-verification builds from src/income-verification-api).
+# `terraform apply` builds and pushes each image via Cloud Build, tagging it with
+# a hash of its source. Set `image` on a service to pin a prebuilt tag instead
+# and skip that build.
 # min_instance_count = 1 keeps one warm instance per service. MCP tools/list
 # runs at the start of every agent turn with a 5s initialize() timeout; a
 # scale-to-zero cold start (~16-19s observed) trips that timeout and drops all
 # MCP tools for the request. Set to 0 if you don't mind cold-start failures.
 mcp_services = {
   legacy-dms = {
-    image              = "us-docker.pkg.dev/cloudrun/container/placeholder"
+    source_dir         = "legacy-dms"
     min_instance_count = 1
   }
   corporate-email = {
-    image              = "us-docker.pkg.dev/cloudrun/container/placeholder"
+    source_dir         = "corporate-email"
     min_instance_count = 1
   }
   income-verification = {
-    image              = "us-docker.pkg.dev/cloudrun/container/placeholder"
+    source_dir         = "income-verification-api"
     min_instance_count = 1
   }
 }

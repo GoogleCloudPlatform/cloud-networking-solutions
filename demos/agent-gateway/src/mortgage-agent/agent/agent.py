@@ -16,16 +16,20 @@
 
 import logging
 import os
+import weakref
 
-# Monkeypatch vertexai to disable the telemetry API check which fails with mTLS SSL handshake errors through the Agent Gateway.
+# Monkeypatch vertexai to disable the telemetry API check which fails with mTLS
+# SSL handshake errors through the Agent Gateway.
 try:
     import vertexai.agent_engines.templates.adk as adk_template
+
     adk_template._warn_if_telemetry_api_disabled = lambda: None
 except Exception:
     pass
 
 try:
     import vertexai.preview.reasoning_engines.templates.adk as preview_adk_template
+
     preview_adk_template._warn_if_telemetry_api_disabled = lambda *args, **kwargs: None
 except Exception:
     pass
@@ -170,6 +174,10 @@ _CACHED_TOOLSETS: list | None = None
 # render an empty instruction and reintroduce the hallucination this caching
 # is meant to prevent.
 _CACHED_DISCOVERED: list[dict[str, Any]] | None = None
+
+# Active agent instances created in this process. Used to dynamically synchronize
+# discovered MCP toolsets with the agent's Pydantic-managed tools list at request time.
+_ACTIVE_AGENTS: list[weakref.ref] = []
 
 # Per-service prose, keyed by registry displayName. Entries here get rendered
 # into the instruction's MCP services block alongside each service's live
@@ -355,6 +363,36 @@ def _discover_mcp_toolsets() -> list:
         # instruction renderer always sees the same view as the toolset list.
         DISCOVERED_MCP_SERVERS.clear()
         DISCOVERED_MCP_SERVERS.extend(_CACHED_DISCOVERED or [])
+
+        # Resolve active references to actual agent instances
+        active_agents = []
+        dead_refs = []
+        for r in list(_ACTIVE_AGENTS):
+            agent = r()
+            if agent is not None:
+                active_agents.append(agent)
+            else:
+                dead_refs.append(r)
+        for r in dead_refs:
+            try:
+                _ACTIVE_AGENTS.remove(r)
+            except ValueError:
+                pass
+
+        _base_tools = [
+            tools.get_current_time,
+            tools.list_mcp_connections,
+        ]
+        for agent in active_agents:
+            try:
+                if len(agent.tools) <= len(_base_tools) and _CACHED_TOOLSETS:
+                    agent.tools.clear()
+                    agent.tools.extend(_base_tools)
+                    agent.tools.extend(_CACHED_TOOLSETS)
+                    logger.info("Synchronized %d cached MCP toolset(s) to agent %s", len(_CACHED_TOOLSETS), agent.name)
+            except Exception:
+                logger.exception("Failed to synchronize cached toolsets to agent %s", agent.name)
+
         return _CACHED_TOOLSETS
 
     DISCOVERED_MCP_SERVERS.clear()
@@ -516,61 +554,36 @@ def _discover_mcp_toolsets() -> list:
 
     _CACHED_TOOLSETS = toolsets
     _CACHED_DISCOVERED = list(DISCOVERED_MCP_SERVERS)
+
+    # Resolve active references to actual agent instances
+    active_agents = []
+    dead_refs = []
+    for r in list(_ACTIVE_AGENTS):
+        agent = r()
+        if agent is not None:
+            active_agents.append(agent)
+        else:
+            dead_refs.append(r)
+    for r in dead_refs:
+        try:
+            _ACTIVE_AGENTS.remove(r)
+        except ValueError:
+            pass
+
+    _base_tools = [
+        tools.get_current_time,
+        tools.list_mcp_connections,
+    ]
+    for agent in active_agents:
+        try:
+            agent.tools.clear()
+            agent.tools.extend(_base_tools)
+            agent.tools.extend(toolsets)
+            logger.info("Synchronized %d discovered MCP toolset(s) to agent %s", len(toolsets), agent.name)
+        except Exception:
+            logger.exception("Failed to synchronize discovered toolsets to agent %s", agent.name)
+
     return _CACHED_TOOLSETS
-
-
-class _LazyToolsList(list):
-    """A lazy sequence wrapper that delegates to list but evaluates discovered tools on-demand."""
-
-    def __init__(self, base_tools):
-        super().__init__()
-        self._base_tools = list(base_tools)
-        self.extend(self._base_tools)
-        self._loaded = False
-
-    def _ensure_loaded(self):
-        if not self._loaded:
-            self._loaded = True
-            try:
-                mcp_tools = _discover_mcp_toolsets()
-                self.clear()
-                self.extend(self._base_tools)
-                self.extend(mcp_tools)
-            except Exception:
-                logger.exception("Failed to lazy-load MCP tools")
-
-    def __len__(self):
-        self._ensure_loaded()
-        return super().__len__()
-
-    def __iter__(self):
-        self._ensure_loaded()
-        return super().__iter__()
-
-    def __getitem__(self, index):
-        self._ensure_loaded()
-        return super().__getitem__(index)
-
-    def __bool__(self):
-        self._ensure_loaded()
-        return super().__bool__()
-
-    def __add__(self, other):
-        self._ensure_loaded()
-        return super().__add__(other)
-
-    def __radd__(self, other):
-        self._ensure_loaded()
-        return other + list(self)
-
-    def __eq__(self, other):
-        self._ensure_loaded()
-        return super().__eq__(other)
-
-    def __repr__(self):
-        if not self._loaded:
-            return f"<_LazyToolsList [not loaded, base={self._base_tools}]>"
-        return super().__repr__()
 
 
 def _lazy_instruction_provider(ctx=None) -> str:
@@ -601,9 +614,8 @@ def _build_agent():
         tools.get_current_time,
         tools.list_mcp_connections,
     ]
-    _tools = _LazyToolsList(_base_tools)
 
-    return _PickleSafeAgent(
+    agent = _PickleSafeAgent(
         model=os.environ.get("MODEL_NAME", "gemini-3.5-flash-lite"),
         name="mortgage_assistant_agent",
         description=(
@@ -611,9 +623,11 @@ def _build_agent():
             "income verification, and corporate email systems through an Agent Gateway."
         ),
         instruction=_lazy_instruction_provider,
-        tools=_tools,
+        tools=list(_base_tools),
         on_tool_error_callback=_handle_tool_error,
     )
+    _ACTIVE_AGENTS.append(weakref.ref(agent))
+    return agent
 
 
 root_agent = _build_agent()
