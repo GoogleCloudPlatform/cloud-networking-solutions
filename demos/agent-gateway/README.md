@@ -124,8 +124,7 @@ uv run python deploy_agent.py --build-only \
 #   build/agent_artifacts.json by default and rebuilds the gs:// URIs itself,
 #   defaulting the bucket to gs://<project_id>-staging. Override with the
 #   agent_staging_bucket tfvar (must match --staging-bucket if you set it).
-cd ..
-cd terraform
+cd ../../terraform
 terraform apply -var deploy_reasoning_engine=true   # or set it in your tfvars
 cd ..
 #
