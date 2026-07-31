@@ -457,8 +457,25 @@ def main() -> None:
     # from args.project (which itself defaults to $PROJECT_ID) so an explicit
     # --project is honoured too. Deploys that don't use MCP-over-Cloud-Run are
     # unaffected: the agent only impersonates this SA when it calls one.
+    #
+    # --project is accepted as either a project ID or a project number, but SA
+    # emails only exist in the ID form. Deriving from a number would produce an
+    # address that never resolves, and because the derived value is always
+    # truthy it would set MCP_INVOKER_SA_EMAIL and push the failure out to an
+    # opaque token-mint error at runtime. Leave it unset instead, which is the
+    # documented path: the agent logs an explicit "MCP_INVOKER_SA_EMAIL is not
+    # set" warning at discovery time.
     if not args.mcp_invoker_sa:
-        args.mcp_invoker_sa = f"agent-mcp-invoker@{args.project}.iam.gserviceaccount.com"
+        if str(args.project).isdigit():
+            print(
+                f"WARNING: --project is a project number ({args.project}), so the "
+                "default --mcp-invoker-sa cannot be derived (SA emails require the "
+                "project ID). Pass --mcp-invoker-sa explicitly if this agent calls "
+                "IAM-protected MCP services.",
+                file=sys.stderr,
+            )
+        else:
+            args.mcp_invoker_sa = f"agent-mcp-invoker@{args.project}.iam.gserviceaccount.com"
 
     ge_deploy_needed = args.ge_deploy or args.ge_deploy_only
     oauth_client_secret = None
