@@ -87,24 +87,15 @@ locals {
       : v.image
     )
   }
-}
 
-# One build per MCP service. `triggers_replace` (not `input`) is what forces
-# the replacement that re-runs the creation-time provisioner, so the build
-# fires only when the source hash actually moves.
-#
-# Services with an explicit `image` in tfvars are skipped entirely — that is the
-# escape hatch for pinning a prebuilt image.
-resource "terraform_data" "mcp_image" {
-  for_each = { for k, v in var.mcp_services : k => v if local.mcp_build_from_source[k] }
-
-  triggers_replace = local.mcp_source_hash[each.key]
-
-  provisioner "local-exec" {
-    command = join(" ", concat(
+  # Assembled here rather than inline in the provisioner heredoc: a multi-line
+  # expression inside a heredoc interpolation is not something `terraform fmt`
+  # indents correctly.
+  mcp_build_command = {
+    for k, v in var.mcp_services : k => join(" ", concat(
       [
-        "gcloud builds submit ${local.mcp_source_dir[each.key]}",
-        "--tag ${local.mcp_image_uri[each.key]}",
+        "gcloud builds submit ${local.mcp_source_dir[k]}",
+        "--tag ${local.mcp_image_uri[k]}",
         "--project ${var.project_id}",
         "--region ${var.region}",
         # The default staging bucket gcloud would pick is multi-region, which
@@ -120,6 +111,60 @@ resource "terraform_data" "mcp_image" {
         "--default-buckets-behavior regional-user-owned-bucket",
       ],
     ))
+  }
+}
+
+# Does the tag the build would produce already exist in Artifact Registry?
+#
+# The source hash alone cannot answer this: it describes the source tree, not
+# the registry. If the image is deleted out from under us — an AR cleanup
+# policy, a manual delete, a destroy that took the repository — the hash is
+# unchanged, so no rebuild fires and module.mcp_services deploys a Cloud Run
+# revision pointing at a tag that is not there. That failure does not clear on
+# re-apply; it needs a manual taint. Folding registry state into the trigger
+# makes the rebuild automatic.
+#
+# `|| true` keeps a missing image (or a missing repository, on the very first
+# plan) a normal "false" rather than a plan-time error.
+data "external" "mcp_image_present" {
+  for_each = { for k, v in var.mcp_services : k => v if local.mcp_build_from_source[k] }
+
+  program = ["bash", "-c", <<-EOT
+    found=$(gcloud artifacts docker images describe "${local.mcp_image_uri[each.key]}" \
+      --project ${var.project_id} --format='value(image_summary.digest)' 2>/dev/null || true)
+    if [ -n "$found" ]; then echo '{"present":"true"}'; else echo '{"present":"false"}'; fi
+  EOT
+  ]
+}
+
+# One build per MCP service. `triggers_replace` (not `input`) is what forces
+# the replacement that re-runs the creation-time provisioner, so the build
+# fires when the source hash moves or when the image goes missing.
+#
+# The provisioner re-checks the registry and skips the build when the tag is
+# already there. That check is what makes the "missing -> built -> present"
+# transition cheap: the apply that builds records `<hash>:false`, and the next
+# plan reads `<hash>:true`, which is a diff, so the provisioner runs once more
+# and exits in about a second instead of rebuilding. It also means `-replace`
+# will not force a rebuild of an image that already exists — delete the tag
+# from Artifact Registry (or change the source) to rebuild deliberately.
+#
+# Services with an explicit `image` in tfvars are skipped entirely — that is the
+# escape hatch for pinning a prebuilt image.
+resource "terraform_data" "mcp_image" {
+  for_each = { for k, v in var.mcp_services : k => v if local.mcp_build_from_source[k] }
+
+  triggers_replace = "${local.mcp_source_hash[each.key]}:${data.external.mcp_image_present[each.key].result.present}"
+
+  provisioner "local-exec" {
+    command = <<-EOT
+      if gcloud artifacts docker images describe "${local.mcp_image_uri[each.key]}" \
+           --project ${var.project_id} >/dev/null 2>&1; then
+        echo "${local.mcp_image_uri[each.key]} already in Artifact Registry; skipping build"
+        exit 0
+      fi
+      ${local.mcp_build_command[each.key]}
+    EOT
   }
 
   # The build reads from the bucket and writes to Artifact Registry as the

@@ -35,6 +35,12 @@ terraform {
       source  = "hashicorp/null"
       version = ">= 3.0"
     }
+    external = {
+      # images.tf probes Artifact Registry at plan time so a deleted image
+      # rebuilds instead of stranding Cloud Run on a tag that no longer exists.
+      source  = "hashicorp/external"
+      version = ">= 2.3"
+    }
     time = {
       source  = "hashicorp/time"
       version = ">= 0.9"
