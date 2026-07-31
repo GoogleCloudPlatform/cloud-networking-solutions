@@ -397,9 +397,9 @@ variable "agent_staging_bucket" {
 }
 
 variable "agent_model" {
-  description = "Gemini model id for the deployed agent (env MODEL_NAME)."
+  description = "Gemini model id for the deployed agent (env MODEL_NAME). Passed through to modules/agent-engine unconditionally, so this default — not the module's — is what an unset tfvars deploys."
   type        = string
-  default     = "gemini-3.1-flash-lite"
+  default     = "gemini-3.5-flash-lite"
 }
 
 variable "model_endpoint_location" {

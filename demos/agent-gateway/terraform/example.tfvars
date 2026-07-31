@@ -182,7 +182,7 @@ enable_agent_engine = true
 # Optional: agent runtime settings (env MODEL_NAME / GOOGLE_CLOUD_LOCATION).
 # model_endpoint_location is intentionally decoupled from var.region;
 # "global" targets the global Gemini endpoint.
-# agent_model             = "gemini-3.1-flash-lite"
+# agent_model             = "gemini-3.5-flash-lite"
 # model_endpoint_location = "global"
 # agent_display_name      = "Mortgage Assistant Agent"
 
