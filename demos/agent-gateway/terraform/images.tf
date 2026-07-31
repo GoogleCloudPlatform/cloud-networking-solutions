@@ -60,14 +60,23 @@ locals {
     ])), 0, 12)
   }
 
+  # A service is built from source unless tfvars pins a prebuilt `image`.
+  # Empty string counts as unset: `coalesce` skips "" as well as null, so
+  # testing only for null here would leave `image = ""` resolving to a computed
+  # tag that no build ever produces.
+  mcp_build_from_source = {
+    for k, v in var.mcp_services : k => v.image == null || v.image == ""
+  }
+
   # Repo name tracks var.name_prefix, matching
   # google_artifact_registry_repository.registry. The image name is the source
   # directory, which is not always the service key (income-verification lives
   # in src/income-verification-api).
   mcp_image_uri = {
-    for k, v in var.mcp_services : k => coalesce(
-      v.image,
-      "${var.region}-docker.pkg.dev/${var.project_id}/${var.name_prefix}-docker/${v.source_dir}:${local.mcp_source_hash[k]}",
+    for k, v in var.mcp_services : k => (
+      local.mcp_build_from_source[k]
+      ? "${var.region}-docker.pkg.dev/${var.project_id}/${var.name_prefix}-docker/${v.source_dir}:${local.mcp_source_hash[k]}"
+      : v.image
     )
   }
 }
@@ -79,7 +88,7 @@ locals {
 # Services with an explicit `image` in tfvars are skipped entirely — that is the
 # escape hatch for pinning a prebuilt image.
 resource "terraform_data" "mcp_image" {
-  for_each = { for k, v in var.mcp_services : k => v if v.image == null }
+  for_each = { for k, v in var.mcp_services : k => v if local.mcp_build_from_source[k] }
 
   triggers_replace = local.mcp_source_hash[each.key]
 
