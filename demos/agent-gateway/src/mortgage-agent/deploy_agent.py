@@ -657,7 +657,12 @@ def main() -> None:
                 "mcp==1.28.1",
                 "opentelemetry-resourcedetector-gcp==1.12.0a0",
                 "sse-starlette==3.4.5",
-                "wrapt==2.2.2",
+                # opentelemetry-instrumentation (pulled in transitively by
+                # opentelemetry-instrumentation-google-genai above) constrains
+                # wrapt<2.0.0,>=1.0.0, so a 2.x pin here is unsatisfiable and
+                # either fails resolution or backtracks otel onto some other
+                # version. 1.17.3 is what uv.lock resolves to.
+                "wrapt==1.17.3",
                 "yarl==1.24.2",
             ],
             # The script must be in extra_packages, not just build_options:
