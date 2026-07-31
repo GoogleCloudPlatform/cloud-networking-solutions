@@ -363,6 +363,19 @@ def _handle_tool_error(
     }
 
 
+def _make_base_tools() -> list:
+    """The utility tools every agent carries, ahead of any discovered toolsets.
+
+    Built fresh per call so each agent owns its own list. Shared by _build_agent
+    and _sync_toolsets_to_agents, which must agree: the sync path uses the
+    length of this list to decide whether an agent is still unsynced.
+    """
+    return [
+        tools.get_current_time,
+        tools.list_mcp_connections,
+    ]
+
+
 def _is_cache_stale() -> bool:
     """True when the cached result is empty and has outlived its TTL.
 
@@ -387,6 +400,42 @@ def _cache_empty_result() -> list:
     _CACHED_DISCOVERED = []
     _CACHED_AT = time.monotonic()
     return _CACHED_TOOLSETS
+
+
+def _sync_toolsets_to_agents(toolsets: list, *, only_if_unsynced: bool, source: str) -> None:
+    """Replace the tools list of every live agent with base tools + `toolsets`.
+
+    Callers hold _DISCOVERY_LOCK. The replacement is a single slice assignment
+    rather than clear() + extend(): ADK's _process_agent_tools early-returns on
+    a falsy agent.tools, so a concurrent turn that observed the window between
+    those two calls would reach the model with no tools declared at all.
+
+    `only_if_unsynced` skips agents that already carry more than the base tools,
+    for the cache-hit path where a re-push would be redundant.
+    """
+    dead_refs = []
+    active_agents = []
+    for r in list(_ACTIVE_AGENTS):
+        agent = r()
+        if agent is not None:
+            active_agents.append(agent)
+        else:
+            dead_refs.append(r)
+    for r in dead_refs:
+        try:
+            _ACTIVE_AGENTS.remove(r)
+        except ValueError:
+            pass
+
+    base_tools = _make_base_tools()
+    for agent in active_agents:
+        try:
+            if only_if_unsynced and not (len(agent.tools) <= len(base_tools) and toolsets):
+                continue
+            agent.tools[:] = base_tools + toolsets
+            logger.info("Synchronized %d %s MCP toolset(s) to agent %s", len(toolsets), source, agent.name)
+        except Exception:
+            logger.exception("Failed to synchronize %s toolsets to agent %s", source, agent.name)
 
 
 def _discover_mcp_toolsets() -> list:
@@ -431,34 +480,7 @@ def _discover_mcp_toolsets_locked() -> list:
         DISCOVERED_MCP_SERVERS.clear()
         DISCOVERED_MCP_SERVERS.extend(_CACHED_DISCOVERED or [])
 
-        # Resolve active references to actual agent instances
-        active_agents = []
-        dead_refs = []
-        for r in list(_ACTIVE_AGENTS):
-            agent = r()
-            if agent is not None:
-                active_agents.append(agent)
-            else:
-                dead_refs.append(r)
-        for r in dead_refs:
-            try:
-                _ACTIVE_AGENTS.remove(r)
-            except ValueError:
-                pass
-
-        _base_tools = [
-            tools.get_current_time,
-            tools.list_mcp_connections,
-        ]
-        for agent in active_agents:
-            try:
-                if len(agent.tools) <= len(_base_tools) and _CACHED_TOOLSETS:
-                    agent.tools.clear()
-                    agent.tools.extend(_base_tools)
-                    agent.tools.extend(_CACHED_TOOLSETS)
-                    logger.info("Synchronized %d cached MCP toolset(s) to agent %s", len(_CACHED_TOOLSETS), agent.name)
-            except Exception:
-                logger.exception("Failed to synchronize cached toolsets to agent %s", agent.name)
+        _sync_toolsets_to_agents(_CACHED_TOOLSETS, only_if_unsynced=True, source="cached")
 
         return _CACHED_TOOLSETS
 
@@ -623,33 +645,7 @@ def _discover_mcp_toolsets_locked() -> list:
     _CACHED_DISCOVERED = list(DISCOVERED_MCP_SERVERS)
     _CACHED_AT = time.monotonic()
 
-    # Resolve active references to actual agent instances
-    active_agents = []
-    dead_refs = []
-    for r in list(_ACTIVE_AGENTS):
-        agent = r()
-        if agent is not None:
-            active_agents.append(agent)
-        else:
-            dead_refs.append(r)
-    for r in dead_refs:
-        try:
-            _ACTIVE_AGENTS.remove(r)
-        except ValueError:
-            pass
-
-    _base_tools = [
-        tools.get_current_time,
-        tools.list_mcp_connections,
-    ]
-    for agent in active_agents:
-        try:
-            agent.tools.clear()
-            agent.tools.extend(_base_tools)
-            agent.tools.extend(toolsets)
-            logger.info("Synchronized %d discovered MCP toolset(s) to agent %s", len(toolsets), agent.name)
-        except Exception:
-            logger.exception("Failed to synchronize discovered toolsets to agent %s", agent.name)
+    _sync_toolsets_to_agents(toolsets, only_if_unsynced=False, source="discovered")
 
     return _CACHED_TOOLSETS
 
@@ -678,11 +674,6 @@ def _build_agent():
 
     Called at import time for local dev, and at unpickle time on Agent Engine.
     """
-    _base_tools: list = [
-        tools.get_current_time,
-        tools.list_mcp_connections,
-    ]
-
     agent = _PickleSafeAgent(
         model=os.environ.get("MODEL_NAME", "gemini-3.5-flash-lite"),
         name="mortgage_assistant_agent",
@@ -691,7 +682,7 @@ def _build_agent():
             "income verification, and corporate email systems through an Agent Gateway."
         ),
         instruction=_lazy_instruction_provider,
-        tools=list(_base_tools),
+        tools=_make_base_tools(),
         on_tool_error_callback=_handle_tool_error,
     )
     _ACTIVE_AGENTS.append(weakref.ref(agent))
