@@ -98,6 +98,16 @@ output "reasoning_engine_name" {
   value       = var.enable_agent_engine && var.deploy_reasoning_engine ? module.agent_engine[0].reasoning_engine_name : null
 }
 
+output "agent_identity_principal" {
+  description = "Project-wide agent principal set (any Agent Engine agent in this project). Used as the roles/iap.egressor member on Agent Registry endpoints. Null when enable_agent_engine is false."
+  value       = var.enable_agent_engine ? module.agent_engine[0].agent_identity_principal : null
+}
+
+output "agent_engine_identity" {
+  description = "Per-agent principal for the Terraform-deployed reasoning engine. Used as the roles/iap.egressor member on Agent Registry MCP servers. Null unless deploy_reasoning_engine is true."
+  value       = var.enable_agent_engine && var.deploy_reasoning_engine ? module.agent_engine[0].agent_engine_identity : null
+}
+
 output "mcp_internal_dns_names" {
   description = "Map of MCP service key to its private DNS name (<service>.<domain>). Null when enable_cloud_run_private_networking = false (no MCP private zone is provisioned)."
   value = (
