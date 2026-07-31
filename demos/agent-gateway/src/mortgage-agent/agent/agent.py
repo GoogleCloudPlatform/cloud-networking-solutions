@@ -16,6 +16,8 @@
 
 import logging
 import os
+import threading
+import time
 import weakref
 
 # Monkeypatch vertexai to disable the telemetry API check which fails with mTLS
@@ -166,10 +168,34 @@ DISCOVERED_MCP_SERVERS: list[dict[str, Any]] = []
 # _PickleSafeAgent.__reduce__ -> _build_agent -> _discover_mcp_toolsets) does
 # not construct a second MCPSessionManager in the same process, which trips
 # "Context has already been used to create a Connection" inside ADK/anyio.
-# Empty results are cached too so a failing discovery is not retried (and
-# re-warned) on every unpickle. Membership is therefore frozen per worker
-# process; new MCP servers require a redeploy or worker restart.
+# A successful (non-empty) result is therefore frozen for the life of the
+# worker process; new MCP servers require a redeploy or worker restart.
+#
+# Empty results are cached too — otherwise a genuinely serverless registry
+# would be re-queried and re-warned on every unpickle — but only until
+# _NEGATIVE_CACHE_TTL_SECONDS elapses. Discovery now runs on the first request
+# rather than at import, so an empty result is frequently just a race with IAM
+# propagation (the window terraform's engine_depends_on gate exists to cover).
+# Caching that permanently would strand the container on utility tools only,
+# for its whole lifetime, with no way back short of replacement.
 _CACHED_TOOLSETS: list | None = None
+
+# time.monotonic() at which _CACHED_TOOLSETS was last written. Only consulted
+# for empty results; see _is_cache_stale().
+_CACHED_AT: float = 0.0
+
+# How long an empty discovery result is trusted before it is retried. Long
+# enough that a registry that really is empty is not re-queried per request,
+# short enough that the agent recovers within a minute of its grants landing.
+_NEGATIVE_CACHE_TTL_SECONDS: float = 60.0
+
+# Serializes _discover_mcp_toolsets(). Discovery is on the request path via the
+# dynamic instruction provider, so without this two concurrent first-requests
+# both miss the cache and both run a full discovery, building duplicate
+# MCPToolset objects and duplicate sessions for the same servers. Reentrant
+# because agent rebuild paths (__reduce__ / __deepcopy__ -> _build_agent) can
+# be reached from inside a call that already holds it.
+_DISCOVERY_LOCK = threading.RLock()
 
 # Companion cache for DISCOVERED_MCP_SERVERS. The instruction template is
 # rendered from DISCOVERED_MCP_SERVERS, so on a cache hit we must restore the
@@ -337,8 +363,45 @@ def _handle_tool_error(
     }
 
 
+def _is_cache_stale() -> bool:
+    """True when the cached result is empty and has outlived its TTL.
+
+    Non-empty results never go stale — re-running discovery would build a
+    second MCPSessionManager in the same process. Only the empty (failed or
+    genuinely-no-servers) result is retried.
+    """
+    if _CACHED_TOOLSETS:
+        return False
+    return (time.monotonic() - _CACHED_AT) >= _NEGATIVE_CACHE_TTL_SECONDS
+
+
+def _cache_empty_result() -> list:
+    """Record an empty discovery result and return it.
+
+    Timestamped so _is_cache_stale() can expire it, which is what lets the
+    agent recover from a discovery that failed only because IAM had not
+    propagated yet.
+    """
+    global _CACHED_TOOLSETS, _CACHED_DISCOVERED, _CACHED_AT
+    _CACHED_TOOLSETS = []
+    _CACHED_DISCOVERED = []
+    _CACHED_AT = time.monotonic()
+    return _CACHED_TOOLSETS
+
+
 def _discover_mcp_toolsets() -> list:
     """Discover MCP servers from the Agent Registry and return ADK toolsets.
+
+    Serialized on _DISCOVERY_LOCK: this runs on the request path via the
+    dynamic instruction provider, and concurrent first-requests would otherwise
+    each build their own duplicate toolsets and sessions.
+    """
+    with _DISCOVERY_LOCK:
+        return _discover_mcp_toolsets_locked()
+
+
+def _discover_mcp_toolsets_locked() -> list:
+    """Discovery body. Callers must hold _DISCOVERY_LOCK.
 
     Project, location, and an optional server-name filter come from env vars
     set by deploy_agent.py:
@@ -357,8 +420,8 @@ def _discover_mcp_toolsets() -> list:
     aborting agent startup, so the agent still boots (with utility tools only)
     if the registry is unreachable.
     """
-    global _CACHED_TOOLSETS, _CACHED_DISCOVERED
-    if _CACHED_TOOLSETS is not None:
+    global _CACHED_TOOLSETS, _CACHED_DISCOVERED, _CACHED_AT
+    if _CACHED_TOOLSETS is not None and not _is_cache_stale():
         logger.debug(
             "Reusing %d cached MCP toolset(s); skipping registry discovery.",
             len(_CACHED_TOOLSETS),
@@ -399,6 +462,12 @@ def _discover_mcp_toolsets() -> list:
 
         return _CACHED_TOOLSETS
 
+    if _CACHED_TOOLSETS is not None:
+        logger.info(
+            "Cached MCP discovery was empty and is older than %.0fs; retrying registry discovery.",
+            _NEGATIVE_CACHE_TTL_SECONDS,
+        )
+
     DISCOVERED_MCP_SERVERS.clear()
 
     project = os.environ.get("MCP_REGISTRY_PROJECT") or os.environ.get("GOOGLE_CLOUD_PROJECT")
@@ -417,9 +486,7 @@ def _discover_mcp_toolsets() -> list:
             project,
             location,
         )
-        _CACHED_TOOLSETS = []
-        _CACHED_DISCOVERED = []
-        return _CACHED_TOOLSETS
+        return _cache_empty_result()
 
     filter_str = os.environ.get("MCP_REGISTRY_FILTER")
     endpoint = os.environ.get("MCP_REGISTRY_ENDPOINT")
@@ -445,9 +512,7 @@ def _discover_mcp_toolsets() -> list:
             "is missing a transitive dep (typically a2a-sdk).",
             e,
         )
-        _CACHED_TOOLSETS = []
-        _CACHED_DISCOVERED = []
-        return _CACHED_TOOLSETS
+        return _cache_empty_result()
 
     try:
         if endpoint:
@@ -465,9 +530,7 @@ def _discover_mcp_toolsets() -> list:
             location,
             effective_endpoint,
         )
-        _CACHED_TOOLSETS = []
-        _CACHED_DISCOVERED = []
-        return _CACHED_TOOLSETS
+        return _cache_empty_result()
 
     raw_servers = response.get("mcpServers", [])
     effective_endpoint = endpoint or getattr(_ar_module, "AGENT_REGISTRY_BASE_URL", "<adk-default>")
@@ -558,6 +621,7 @@ def _discover_mcp_toolsets() -> list:
 
     _CACHED_TOOLSETS = toolsets
     _CACHED_DISCOVERED = list(DISCOVERED_MCP_SERVERS)
+    _CACHED_AT = time.monotonic()
 
     # Resolve active references to actual agent instances
     active_agents = []
