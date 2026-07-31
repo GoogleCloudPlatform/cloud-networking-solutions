@@ -55,13 +55,13 @@ variable "platform_admin_members" {
 }
 
 variable "cloudbuild_bucket_name" {
-  description = "Override the Cloud Build source bucket name. Defaults to <project_id>_cloudbuild, which matches the bucket gcloud/Cloud Build SDKs auto-pick when no --gcs-source-staging-dir is passed; overriding the name breaks that convenience."
+  description = "Override the Cloud Build source bucket name. Defaults to <project_id>-<name_prefix>-cloudbuild — a bucket owned by this demo alone, so the force_destroy default below can only ever delete this stack's own build sources. Deliberately NOT the <project_id>_cloudbuild convention bucket that gcloud/Cloud Build SDKs auto-pick: that one is shared by every build in the project, and force-destroying it on teardown would take other workloads' sources and logs with it. images.tf passes --gcs-source-staging-dir explicitly, so nothing here relies on the auto-pick name. Existing deployments that want to keep using the shared bucket must set this to \"<project_id>_cloudbuild\" — otherwise the rename replaces the bucket, and force_destroy deletes the old one's contents on apply."
   type        = string
   default     = null
 }
 
 variable "cloudbuild_bucket_force_destroy" {
-  description = "Allow `terraform destroy` to delete the Cloud Build source bucket while it still holds objects. Defaults to true because the bucket only ever holds disposable build sources and logs (it already expires them after 30 days), and every MCP image build repopulates it — with force_destroy off, teardown of a demo project always fails on a non-empty bucket. Set to false if you repoint the bucket at something you care about keeping."
+  description = "Allow `terraform destroy` to delete the Cloud Build source bucket while it still holds objects. Defaults to true because the default bucket is demo-scoped and only ever holds disposable build sources and logs (it already expires them after 30 days), and every MCP image build repopulates it — with force_destroy off, teardown of a demo project always fails on a non-empty bucket. Set to false if you repoint cloudbuild_bucket_name at a shared or long-lived bucket."
   type        = bool
   default     = true
 }
