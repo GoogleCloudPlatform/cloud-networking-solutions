@@ -30,7 +30,11 @@ except Exception:
 try:
     import vertexai.preview.reasoning_engines.templates.adk as preview_adk_template
 
-    preview_adk_template._warn_if_telemetry_api_disabled = lambda *args, **kwargs: None
+    # Unlike the non-preview template, where this is a module-level function,
+    # the preview template defines it as an AdkApp method and calls it as
+    # `self._warn_if_telemetry_api_disabled()`. A module-level attribute would
+    # never shadow the bound method, so patch the class.
+    preview_adk_template.AdkApp._warn_if_telemetry_api_disabled = lambda self: None
 except Exception:
     pass
 
