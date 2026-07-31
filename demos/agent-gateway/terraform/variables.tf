@@ -67,7 +67,7 @@ variable "cloudbuild_bucket_force_destroy" {
 }
 
 variable "cloudbuild_service_account" {
-  description = "Service account email that MCP image builds run as. Leave null to let Cloud Build use the Compute Engine default SA, which is what the IAM grants in main.tf provision and is correct for most projects. Projects created with the default Compute SA disabled (an org policy on newer projects) reject builds that omit an explicit service account — set this to a build SA holding roles/storage.objectViewer on the source bucket and roles/artifactregistry.writer."
+  description = "Service account email that MCP image builds run as. Leave null to let Cloud Build use the Compute Engine default SA, which is what the IAM grants in main.tf provision and is correct for most projects. Projects created with the default Compute SA disabled (an org policy on newer projects) reject builds that omit an explicit service account — set this to a build SA holding roles/storage.objectViewer on the source bucket, roles/artifactregistry.writer, and roles/logging.logWriter (builds that name a service account must also write logs somewhere; images.tf passes --default-buckets-behavior=regional-user-owned-bucket for that)."
   type        = string
   default     = null
 }

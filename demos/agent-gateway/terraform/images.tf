@@ -96,7 +96,11 @@ resource "terraform_data" "mcp_image" {
         "--quiet",
       ],
       var.cloudbuild_service_account == null ? [] : [
-        "--service-account projects/${var.project_id}/serviceAccounts/${var.cloudbuild_service_account}"
+        "--service-account projects/${var.project_id}/serviceAccounts/${var.cloudbuild_service_account}",
+        # Cloud Build rejects any build that names a user-managed service
+        # account without also naming a logs destination, so this flag is not
+        # optional once --service-account is set.
+        "--default-buckets-behavior regional-user-owned-bucket",
       ],
     ))
   }
