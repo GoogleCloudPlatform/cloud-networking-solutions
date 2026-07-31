@@ -28,13 +28,21 @@
 # repo-connected Cloud Build trigger rather than shelling out from Terraform.
 
 locals {
-  # Substrings that disqualify a file from the source hash. Mirrors the intent
-  # of src/*/.dockerignore: build caches and virtualenvs must not perturb the
-  # hash, or the image tag churns on every apply.
+  # Substrings that disqualify a file from the source hash. Entry-for-entry
+  # mirror of src/*/.gcloudignore (which controls what is actually uploaded to
+  # Cloud Build): build caches and virtualenvs must not perturb the hash, or
+  # the image tag churns on every apply. Anything ignored there but hashed here
+  # rebuilds a byte-identical image under a new tag; anything hashed there but
+  # ignored here ships a change the tag does not reflect. Keep both in sync.
+  #
+  # Matching is strcontains, not glob — ".pyc" is the substring form of "*.pyc".
   mcp_source_exclude = [
     ".venv/",
     ".git/",
+    ".gitignore",
     "__pycache__/",
+    ".pyc",
+    ".pyo",
     ".ruff_cache/",
     ".mypy_cache/",
     ".pytest_cache/",
