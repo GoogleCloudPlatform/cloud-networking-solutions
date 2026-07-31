@@ -124,13 +124,13 @@ resource "terraform_data" "mcp_image" {
 
   # The build reads from the bucket and writes to Artifact Registry as the
   # Cloud Build service account. Without these edges the first apply on a fresh
-  # project races the IAM grants and fails with a permission error.
+  # project races the IAM grants and fails with a permission error. The
+  # time_sleep depends on all three grants and adds a propagation pause on top
+  # of the ordering, which the grants alone do not give us.
   depends_on = [
     google_artifact_registry_repository.registry,
     google_storage_bucket.cloudbuild,
-    google_storage_bucket_iam_member.cloudbuild_compute_sa,
-    google_project_iam_member.cloudbuild_registry,
-    google_storage_bucket_iam_member.cloudbuild_service_agent,
+    time_sleep.cloudbuild_iam_propagation,
   ]
 
   lifecycle {

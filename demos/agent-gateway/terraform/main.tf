@@ -194,6 +194,27 @@ resource "google_storage_bucket_iam_member" "cloudbuild_service_agent" {
   member = "serviceAccount:service-${module.foundation.project_number}@gcp-sa-cloudbuild.iam.gserviceaccount.com"
 }
 
+# IAM is eventually consistent, so ordering the grants ahead of the builds is
+# not enough on its own: depends_on only proves the SetIamPolicy call returned,
+# not that the binding is in effect. Cloud Build validates the source bucket as
+# the build service account when the build is created, so a build submitted
+# inside the propagation window fails with a PERMISSION_DENIED that names the
+# invoking user rather than the service account actually missing access.
+#
+# This only costs time on the first apply against a project — the sleep is
+# re-run only when one of the grants below is replaced. It shortens the race
+# rather than closing it; if a fresh project still trips the error, re-running
+# apply picks the builds back up, or raise this duration.
+resource "time_sleep" "cloudbuild_iam_propagation" {
+  create_duration = "30s"
+
+  triggers = {
+    compute_sa_bucket    = google_storage_bucket_iam_member.cloudbuild_compute_sa.id
+    compute_sa_registry  = google_project_iam_member.cloudbuild_registry.id
+    service_agent_bucket = google_storage_bucket_iam_member.cloudbuild_service_agent.id
+  }
+}
+
 # Phase 5: Certificates — Google-managed TLS via Certificate Manager
 # Gated by both the master `enable_cloud_run_private_networking` flag (the
 # cert is only meaningful when the MCP internal LB is provisioned) and the
