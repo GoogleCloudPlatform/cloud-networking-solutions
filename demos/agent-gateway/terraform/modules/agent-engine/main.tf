@@ -144,7 +144,8 @@ resource "google_project_iam_member" "demo_user_aiplatform_user" {
 # Optional declarative deploy of the agent runtime, replacing the imperative
 # src/mortgage-agent/deploy_agent.py create path. Uses google-beta because the
 # AGENT_TO_ANYWHERE gateway association (agent_gateway_config) is beta-only.
-# The env map mirrors deploy_agent.py's deploy_config env_vars 1:1.
+# The env map mirrors deploy_agent.py's deploy_config env_vars, plus the
+# terraform-only AGENT_ARTIFACT_HASH described below.
 # =============================================================================
 
 locals {
@@ -164,7 +165,16 @@ locals {
   # setting it here produces a permanent diff and a failing in-place update
   # ("The Reasoning Engine failed to be updated"). The platform manages it; the
   # agent code doesn't read it. (deploy_agent.py's imperative path still sets it.)
+  #
+  # AGENT_ARTIFACT_HASH is the one entry with no counterpart in deploy_agent.py.
+  # package_spec's URIs are fixed filenames under a fixed directory, so rebuilt
+  # agent code lands at byte-identical URIs and leaves nothing for terraform to
+  # diff -- apply reports "No changes" and the engine keeps serving the old
+  # pickle. Carrying the manifest's artifact fingerprint in the env forces the
+  # in-place update, which redeploys the container and re-pulls the pickle.
+  # Unset in manifests written before this existed, hence the try().
   agent_env = {
+    AGENT_ARTIFACT_HASH                                     = try(local.agent_artifacts.artifact_hash, "unset")
     ADK_ENABLE_MCP_GRACEFUL_ERROR_HANDLING                  = "true"
     GOOGLE_API_PREVENT_AGENT_TOKEN_SHARING_FOR_GCP_SERVICES = "false"
     OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT      = "true"

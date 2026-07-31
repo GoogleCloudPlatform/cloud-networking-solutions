@@ -49,6 +49,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import shutil
@@ -745,6 +746,40 @@ def main() -> None:
                     operations=_aeu._get_registered_operations(agent=app),
                 )
             ]
+            # Fingerprint of what was just staged. _prepare overwrites the same
+            # three object names on every build, so nothing in the artifact URIs
+            # moves when the agent changes -- terraform would report "No changes"
+            # and leave the engine serving the previous pickle. The engine module
+            # feeds this into an env var so a new build is an actual diff.
+            #
+            # Read back from GCS because _prepare streams straight to the bucket
+            # and leaves no local copy. cloudpickle is not guaranteed byte-stable,
+            # so an unchanged agent may still produce a new hash; that errs toward
+            # redeploying when nothing changed rather than never redeploying.
+            artifact_bucket = _aeu._get_gcs_bucket(
+                project=args.project,
+                location=args.region,
+                staging_bucket=staging_bucket,
+            )
+            artifact_digests = []
+            for filename in (
+                _aeu._BLOB_FILENAME,
+                _aeu._EXTRA_PACKAGES_FILE,
+                _aeu._REQUIREMENTS_FILE,
+            ):
+                blob = artifact_bucket.get_blob(f"{args.gcs_dir}/{filename}")
+                if blob is None:
+                    artifact_digests.append(f"{filename}:absent")
+                    continue
+                # md5_hash is unset for composite and some resumable uploads, and
+                # the pickle is big enough to hit that path. crc32c is always
+                # populated; generation is a last resort that changes on every
+                # overwrite, so it degrades to "always redeploy" rather than to
+                # "never redeploy".
+                digest = blob.md5_hash or blob.crc32c or blob.generation
+                artifact_digests.append(f"{filename}:{digest}")
+            artifact_hash = hashlib.sha256("|".join(artifact_digests).encode()).hexdigest()
+
             # Deliberately bucket-free: the manifest records only the artifact
             # layout, so terraform composes the gs:// URIs from its own
             # project_id/agent_staging_bucket. Keeps the file portable between
@@ -756,6 +791,7 @@ def main() -> None:
                 "pickle_filename": _aeu._BLOB_FILENAME,
                 "dependencies_filename": _aeu._EXTRA_PACKAGES_FILE,
                 "requirements_filename": _aeu._REQUIREMENTS_FILE,
+                "artifact_hash": artifact_hash,
                 "class_methods": class_methods,
             }
             if args.artifacts_out:
