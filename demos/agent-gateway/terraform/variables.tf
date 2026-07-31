@@ -37,9 +37,14 @@ variable "region" {
 }
 
 variable "name_prefix" {
-  description = "Prefix for resource names"
+  description = "Prefix for resource names. Constrained to 1-21 lowercase RFC1035 characters so every name derived from it is legal: compute resources (networking, the ILB) require RFC1035, the Artifact Registry repository_id disallows uppercase and underscores, and the default Cloud Build bucket name is <project_id>-<name_prefix>-cloudbuild — with project_id at its 30-character maximum, 21 characters is what keeps that under the 63-character GCS limit. Without the bound these surface as raw API errors partway through an apply rather than at plan time."
   type        = string
   default     = "gateway"
+
+  validation {
+    condition     = can(regex("^[a-z]([-a-z0-9]{0,19}[a-z0-9])?$", var.name_prefix))
+    error_message = "name_prefix must be 1-21 characters, start with a lowercase letter, end with a lowercase letter or digit, and contain only lowercase letters, digits, and hyphens."
+  }
 }
 
 variable "organization_id" {
@@ -64,6 +69,24 @@ variable "cloudbuild_bucket_force_destroy" {
   description = "Allow `terraform destroy` to delete the Cloud Build source bucket while it still holds objects. Defaults to true because the default bucket is demo-scoped and only ever holds disposable build sources and logs (it already expires them after 30 days), and every MCP image build repopulates it — with force_destroy off, teardown of a demo project always fails on a non-empty bucket. Set to false if you repoint cloudbuild_bucket_name at a shared or long-lived bucket."
   type        = bool
   default     = true
+
+  # Repointing cloudbuild_bucket_name at the shared <project_id>_cloudbuild
+  # bucket does not, on its own, endanger it: the rename forces a replacement,
+  # terraform destroys the bucket it owns and then fails 409 creating one that
+  # already exists. The hazard is the step after that. Making the shared bucket
+  # work means importing it, at which point it inherits force_destroy from here
+  # and a later `terraform destroy` empties a bucket holding every other
+  # workload's build sources and logs. Catch that pairing at plan time.
+  validation {
+    #
+    # try() rather than a null check: terraform's && does not reliably
+    # short-circuit, and endswith(null, ...) is an error, not false.
+    condition = !(
+      var.cloudbuild_bucket_force_destroy &&
+      try(endswith(var.cloudbuild_bucket_name, "_cloudbuild"), false)
+    )
+    error_message = "cloudbuild_bucket_name points at a <project_id>_cloudbuild convention bucket, which every build in the project shares. Set cloudbuild_bucket_force_destroy = false so terraform destroy cannot empty it."
+  }
 }
 
 variable "cloudbuild_service_account" {
