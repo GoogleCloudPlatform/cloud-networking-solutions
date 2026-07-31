@@ -670,22 +670,37 @@ class _PickleSafeAgent(Agent):
 
 
 def _build_agent():
-    """Build the agent with utility tools plus discovered MCP toolsets.
+    """Build the agent with utility tools plus any already-discovered toolsets.
 
     Called at import time for local dev, and at unpickle time on Agent Engine.
+
+    Seeded from _CACHED_TOOLSETS so a rebuild does not start tool-less. Without
+    the seed an agent only gains toolsets once _lazy_instruction_provider runs
+    and _sync_toolsets_to_agents pushes them in. That happens to work today —
+    ADK's _preprocess_async renders instructions before it iterates
+    canonical_tools() — but it makes tool visibility depend on processor
+    ordering, so any path that enumerates tools without rendering the
+    instruction sees only the base tools.
+
+    Holds _DISCOVERY_LOCK so the seed cannot interleave with a discovery that
+    is midway through publishing a new toolset list. The lock is an RLock, so
+    a rebuild triggered from under it (deepcopy of a live agent) still works.
     """
-    agent = _PickleSafeAgent(
-        model=os.environ.get("MODEL_NAME", "gemini-3.5-flash-lite"),
-        name="mortgage_assistant_agent",
-        description=(
-            "A mortgage underwriting assistant that connects to legacy document management, "
-            "income verification, and corporate email systems through an Agent Gateway."
-        ),
-        instruction=_lazy_instruction_provider,
-        tools=_make_base_tools(),
-        on_tool_error_callback=_handle_tool_error,
-    )
-    _ACTIVE_AGENTS.append(weakref.ref(agent))
+    with _DISCOVERY_LOCK:
+        agent = _PickleSafeAgent(
+            model=os.environ.get("MODEL_NAME", "gemini-3.5-flash-lite"),
+            name="mortgage_assistant_agent",
+            description=(
+                "A mortgage underwriting assistant that connects to legacy document management, "
+                "income verification, and corporate email systems through an Agent Gateway."
+            ),
+            instruction=_lazy_instruction_provider,
+            # Same shape _sync_toolsets_to_agents installs, so an agent seeded
+            # here is already "synced" and its only_if_unsynced pass skips it.
+            tools=_make_base_tools() + list(_CACHED_TOOLSETS or []),
+            on_tool_error_callback=_handle_tool_error,
+        )
+        _ACTIVE_AGENTS.append(weakref.ref(agent))
     return agent
 
 
