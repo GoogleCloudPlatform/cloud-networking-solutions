@@ -528,23 +528,11 @@ module "agent_gateway" {
   model_armor_request_template_id  = var.enable_model_armor ? module.model_armor[0].request_template_id : null
   model_armor_response_template_id = var.enable_model_armor ? module.model_armor[0].response_template_id : null
 
-  # Scope the Model Armor CONTENT_AUTHZ policy to the per-MCP-service Host
-  # values: when private networking is on, that's `<svc>.<mcp domain>` (the
-  # internal LB hostname). When private networking is off, the agent reaches
-  # Cloud Run via *.run.app, so flatten over every URL form Cloud Run exposes
-  # for each service (both the hash form `<svc>-<hash>-<region>.a.run.app`
-  # AND the project-number form `<svc>-<project-number>.<region>.run.app`) —
-  # an agent may legitimately call either, and Model Armor host matching is
-  # exact-string. The trailing dot on the private zone domain is stripped so
-  # the value matches what HTTP clients actually send in the Host header.
-  model_armor_authz_hosts = var.enable_model_armor ? (
-    var.enable_cloud_run_private_networking
-    ? [for svc in keys(var.mcp_services) :
-    "${svc}.${trimsuffix(var.mcp_internal_dns_zone.domain, ".")}"]
-    : flatten([for svc in keys(var.mcp_services) :
-      [for u in module.mcp_services.service_url_list[svc] :
-    replace(replace(u, "https://", ""), "/", "")]])
-  ) : []
+  # NOTE: the Model Armor CONTENT_AUTHZ policy is deliberately unscoped — it
+  # applies to all gateway traffic, not just the MCP service hosts. The
+  # per-service Host-value computation that used to feed http_rules was removed
+  # along with the module's model_armor_authz_hosts variable; recover it from
+  # git history if host scoping is reinstated.
 
   authz_extension_fail_open = var.agent_gateway_authz_fail_open
   iap_iam_enforcement_mode  = var.agent_gateway_iap_iam_enforcement_mode

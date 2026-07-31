@@ -188,9 +188,10 @@ resource "google_network_security_authz_policy" "iap" {
 
 # Bind the Model Armor authz extension to the Agent Gateway. CONTENT_AUTHZ
 # profile streams body events to the extension for content sanitization.
-# When model_armor_authz_hosts is non-empty, scope the policy to the listed
-# Host header values via http_rules; otherwise the policy applies to all
-# gateway traffic.
+# No http_rules are set, so the policy applies to ALL traffic through the
+# gateway — every agent egress hop (Vertex AI, Agent Registry, storage) is
+# content-inspected, not just the MCP service hosts. Add an http_rules block
+# scoping `to.operations.hosts` if that breadth ever needs narrowing.
 # Serialized after the IAP authz policy: both policies attach to the same Agent
 # Gateway, and the gateway backend allows only one mutating operation at a time
 # (concurrent creates fail with code 10 "another ongoing operation for the same
@@ -214,22 +215,6 @@ resource "google_network_security_authz_policy" "model_armor" {
       resources = [google_network_services_authz_extension.model_armor[0].id]
     }
   }
-
-  # dynamic "http_rules" {
-  #   for_each = length(var.model_armor_authz_hosts) > 0 ? [1] : []
-  #   content {
-  #     to {
-  #       operations {
-  #         dynamic "hosts" {
-  #           for_each = var.model_armor_authz_hosts
-  #           content {
-  #             exact = hosts.value
-  #           }
-  #         }
-  #       }
-  #     }
-  #   }
-  # }
 }
 
 # IAM for the gateway's service-extensions service account (Model Armor path
