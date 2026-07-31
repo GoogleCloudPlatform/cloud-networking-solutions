@@ -43,6 +43,53 @@ resource "google_compute_network_attachment" "agent_gateway" {
   subnetworks           = [var.agent_gateway_subnet_self_link]
 }
 
+# Destroy-time drain gate for the network attachment above.
+#
+# Terraform already tears these down in the right order — the gateway references
+# the attachment, so the gateway is deleted first. The problem is that the Agent
+# Gateway's DELETE returns as soon as the control-plane record is gone, while the
+# tenant-side PSC-Interface endpoint it attached is removed asynchronously a few
+# minutes later. Terraform deletes the attachment inside that window and compute
+# rejects it:
+#
+#   Error 412: Network Attachment with connected endpoints cannot be deleted.
+#
+# Nothing is actually wrong; the endpoint clears on its own. This node exists
+# only to hold the attachment's delete until connectedEndpoints is empty. It sits
+# between the two in the graph (gateway -> drain -> attachment), so on destroy it
+# runs after the gateway is gone and before the attachment is touched. Note that
+# connectedEndpoints reads as empty while the gateway is merely idle, so this
+# cannot be checked at plan time — the endpoint only shows up during teardown.
+#
+# Best-effort by design: on timeout it exits 0 and lets the delete attempt
+# proceed, which is exactly today's behaviour, and a re-run finishes the job.
+# Destroy provisioners cannot read variables, hence the values stashed in `input`.
+resource "terraform_data" "network_attachment_drain" {
+  input = {
+    project = var.project_id
+    region  = var.region
+    name    = google_compute_network_attachment.agent_gateway.name
+  }
+
+  provisioner "local-exec" {
+    when    = destroy
+    command = <<-EOT
+      echo "Waiting for PSC endpoints to detach from ${self.input.name} before deleting it..."
+      for _ in $(seq 1 60); do
+        endpoints=$(gcloud compute network-attachments describe "${self.input.name}" \
+          --project "${self.input.project}" --region "${self.input.region}" \
+          --format='value(connectedEndpoints[].pscConnectionId)' 2>/dev/null) || exit 0
+        if [ -z "$endpoints" ]; then
+          echo "No connected endpoints remain; proceeding with delete."
+          exit 0
+        fi
+        sleep 10
+      done
+      echo "Endpoints still attached after 10m; attempting the delete anyway." >&2
+    EOT
+  }
+}
+
 # Allow the gateway tenant's PSC-I NIC (sourcing from the dedicated subnet) to
 # reach the MCP internal LB on its front-end port.
 resource "google_compute_firewall" "agent_gateway_psc_i" {
@@ -61,6 +108,11 @@ resource "google_compute_firewall" "agent_gateway_psc_i" {
 
 # The Agent Gateway itself. Google-managed, AGENT_TO_ANYWHERE.
 resource "google_network_services_agent_gateway" "this" {
+  # The network_attachment reference below already creates an edge to the
+  # attachment. This adds the edge to the drain gate, which is what puts the
+  # destroy-time wait between deleting this gateway and deleting the attachment.
+  depends_on = [terraform_data.network_attachment_drain]
+
   project  = var.project_id
   name     = var.name
   location = var.region
