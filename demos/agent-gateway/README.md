@@ -52,7 +52,6 @@ agent-gateway/
 │       ├── mcp-cloud-run/           # Cloud Run services + per-svc runtime SAs
 │       ├── mcp-internal-lb/         # Internal ALB + Serverless NEG (private)
 │       └── model-armor/             # Model Armor templates + DLP integration
-├── codelab.md                       # Full walkthrough (source of truth)
 └── docs/architecture.png
 ```
 
@@ -69,7 +68,8 @@ agent-gateway/
 
 ## Quick start
 
-The full procedure with explanations lives in [`codelab.md`](codelab.md).
+The full procedure with explanations lives in the
+[codelab](https://codelabs.developers.google.com/cloudnet-agent-gateway).
 Condensed:
 
 ```bash
@@ -92,7 +92,7 @@ cp terraform/example.backend.conf terraform/backend.conf
 
 # 3. Configure Terraform variables
 cp terraform/example.tfvars terraform/terraform.tfvars
-# Edit terraform/terraform.tfvars (see codelab.md for the variable reference)
+# Edit terraform/terraform.tfvars (see the codelab for the variable reference)
 
 # 4. Deploy infrastructure, and build + deploy the MCP servers.
 #    Each src/<source_dir> is built by regional Cloud Build during the apply
@@ -158,8 +158,10 @@ cd ../..
 - **Cleanup:** `terraform destroy` (after deleting the deployed Reasoning
   Engine first).
 
-Each is covered in [`codelab.md`](codelab.md), including troubleshooting
-(gateway settle time, missing IAM, DNS peering, image tag conflicts).
+Each is covered in the
+[codelab](https://codelabs.developers.google.com/cloudnet-agent-gateway),
+including troubleshooting (gateway settle time, missing IAM, DNS peering,
+image tag conflicts).
 
 ## Contributing
 
