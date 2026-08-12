@@ -17,7 +17,7 @@
 
 # /// script
 # dependencies = [
-#   "mcp",
+#   "mcp>=1.26.0,<2.0.0",
 #   "httpx",
 # ]
 # ///
@@ -200,6 +200,9 @@ async def run_session(session, args, log):
                     "description": tool.description,
                     "inputSchema": tool.inputSchema,
                 }
+            # Ensure inputSchema is present for Agent Registry schema compliance
+            if not tool_dict.get("inputSchema"):
+                tool_dict["inputSchema"] = {"type": "object", "properties": {}}
             tools_data.append(tool_dict)
 
         output_file = "toolspec.json"
@@ -387,7 +390,11 @@ async def main():
     elif transport == "streamable-http":
         log("Using MCP 2025-03-26 Streamable HTTP transport.")
         http_client = httpx.AsyncClient(headers=headers) if headers else None
-        async with streamable_http_client(url, http_client=http_client) as (read_stream, write_stream, get_session_id):
+        async with streamable_http_client(url, http_client=http_client) as client_streams:
+            if len(client_streams) == 3:
+                read_stream, write_stream, _ = client_streams
+            else:
+                read_stream, write_stream = client_streams
             async with ClientSession(read_stream, write_stream) as session:
                 await session.initialize()
                 log("Streamable HTTP Session initialized successfully!")
