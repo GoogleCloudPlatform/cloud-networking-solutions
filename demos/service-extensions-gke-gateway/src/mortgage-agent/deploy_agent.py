@@ -344,7 +344,7 @@ def main() -> None:
         "--model",
         default="gemini-3.1-flash-lite",
         help="Gemini model name for the agent (default: gemini-3.1-flash-lite)",
-     )
+    )
     parser.add_argument(
         "--agent-location",
         default="us-central1",
