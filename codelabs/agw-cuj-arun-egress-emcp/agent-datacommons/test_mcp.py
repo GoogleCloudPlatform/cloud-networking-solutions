@@ -17,7 +17,7 @@
 
 # /// script
 # dependencies = [
-#   "mcp",
+#   "mcp>=1.26.0,<2.0.0",
 #   "httpx",
 # ]
 # ///
@@ -160,6 +160,9 @@ async def run_session(session, args, log):
                     "description": tool.description,
                     "inputSchema": tool.inputSchema,
                 }
+            # Ensure inputSchema is present for Agent Registry schema compliance
+            if not tool_dict.get("inputSchema"):
+                tool_dict["inputSchema"] = {"type": "object", "properties": {}}
             tools_data.append(tool_dict)
 
         output_file = "toolspec.json"
