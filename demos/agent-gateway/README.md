@@ -39,6 +39,7 @@ agent-gateway/
 │   └── mortgage-agent/              # Python — ADK agent + deploy_agent.py
 ├── terraform/
 │   ├── main.tf, variables.tf, outputs.tf, backend.tf, versions.tf
+│   ├── images.tf                    # Cloud Build of src/* during apply
 │   ├── example.tfvars, example.backend.conf
 │   └── modules/
 │       ├── foundation/              # Project services, APIs, IAM
@@ -51,14 +52,6 @@ agent-gateway/
 │       ├── mcp-cloud-run/           # Cloud Run services + per-svc runtime SAs
 │       ├── mcp-internal-lb/         # Internal ALB + Serverless NEG (private)
 │       └── model-armor/             # Model Armor templates + DLP integration
-├── cloudrun/                        # Cloud Run service templates (envsubst)
-│   ├── corporate-email.yaml.tmpl
-│   ├── income-verification-api.yaml.tmpl
-│   └── legacy-dms.yaml.tmpl
-├── scripts/
-│   └── grant_agent_mcp_egress.sh    # Per-MCP IAP egress IAM (run after deploy)
-├── skaffold.yaml.tmpl               # Multi-service build + Cloud Run deploy
-├── codelab.md                       # Full walkthrough (source of truth)
 └── docs/architecture.png
 ```
 
@@ -67,14 +60,16 @@ agent-gateway/
 - A Google Cloud project with billing enabled
 - `gcloud` (Cloud SDK)
 - `terraform` >= 1.5
-- [`skaffold`](https://skaffold.dev/) for image builds
 - Python 3.12+ with [`uv`](https://docs.astral.sh/uv/)
-- `envsubst` (gettext) and `jq` — Cloud Shell already has these
 - (Secure path only) A public DNS zone you own, used for the LB cert
+
+`terraform apply` shells out to `gcloud builds submit` for the MCP images, so
+`gcloud` must be on `PATH` with working application-default credentials.
 
 ## Quick start
 
-The full procedure with explanations lives in [`codelab.md`](codelab.md).
+The full procedure with explanations lives in the
+[codelab](https://codelabs.developers.google.com/cloudnet-agent-gateway).
 Condensed:
 
 ```bash
@@ -97,46 +92,61 @@ cp terraform/example.backend.conf terraform/backend.conf
 
 # 3. Configure Terraform variables
 cp terraform/example.tfvars terraform/terraform.tfvars
-# Edit terraform/terraform.tfvars (see codelab.md for the variable reference)
+# Edit terraform/terraform.tfvars (see the codelab for the variable reference)
 
-# 4. Deploy infrastructure
+# 4. Deploy infrastructure, and build + deploy the MCP servers.
+#    Each src/<source_dir> is built by regional Cloud Build during the apply
+#    and tagged with a hash of its source, so re-applying without touching
+#    src/ rebuilds nothing. No separate build step.
 cd terraform
 terraform init -backend-config=backend.conf
 terraform plan
 terraform apply
 cd ..
 
-# 5. Render skaffold + cloudrun manifests. MCP_INGRESS comes from a
-#    Terraform output that mirrors enable_cloud_run_private_networking,
-#    so the rendered Cloud Run YAML stays in sync with Terraform state.
-export MCP_INGRESS=$(cd terraform && terraform output -raw mcp_cloud_run_ingress_annotation)
-envsubst '${PROJECT_ID} ${REGION} ${MCP_INGRESS}' < skaffold.yaml.tmpl > skaffold.yaml
-for f in cloudrun/*.yaml.tmpl; do
-  envsubst '${PROJECT_ID} ${REGION} ${MCP_INGRESS}' < "$f" > "${f%.tmpl}"
-done
-
-# 6. Build images and deploy MCP services
-gcloud projects add-iam-policy-binding ${PROJECT_ID} \
-  --member="user:$(gcloud config get-value account)" \
-  --role="roles/iam.serviceAccountUser"
-skaffold run
-
-# 7. Deploy the mortgage agent to Agent Runtime
+# 5. Deploy the mortgage agent to Agent Runtime. Two options:
+#
+# 5a. Terraform-managed (recommended). Terraform owns the reasoning engine
+#     (package_spec) AND the per-agent MCP-server egress grants. Because a
+#     reasoning engine is deployed from prebuilt artifacts, this is two-phase:
+#     step 4 already created the registry/invoker SA/gateway and the MCP
+#     servers; now build the artifacts, then flip deploy_reasoning_engine and
+#     re-apply.
+cd src/mortgage-agent
+uv sync
+uv run python deploy_agent.py --build-only \
+  --project=${PROJECT_ID} --region=${REGION} \
+  --mcp-invoker-sa=$(terraform -chdir=../../terraform output -raw agent_mcp_invoker_email) \
+  --model-endpoint-location=global
+# ^ uploads pickle/deps/requirements to gs://${PROJECT_ID}-staging/agent_engine/
+#   and writes build/agent_artifacts.json (artifact layout + class_methods).
+#   The manifest is gitignored and bucket-free: terraform reads it from
+#   build/agent_artifacts.json by default and rebuilds the gs:// URIs itself,
+#   defaulting the bucket to gs://<project_id>-staging. Override with the
+#   agent_staging_bucket tfvar (must match --staging-bucket if you set it).
+cd ../../terraform
+terraform apply -var deploy_reasoning_engine=true   # or set it in your tfvars
+cd ..
+#
+# 5b. Imperative (kept as-is; also the path for Gemini Enterprise --ge-deploy):
 cd src/mortgage-agent
 uv sync
 uv run python deploy_agent.py \
   --project=${PROJECT_ID} --region=${REGION} \
   --enable-agent-identity --agent-name=mortgage-agent \
   --agent-gateway=projects/${PROJECT_ID}/locations/${REGION}/agentGateways/agent-gateway \
+  --mcp-invoker-sa=$(terraform -chdir=../../terraform output -raw agent_mcp_invoker_email) \
   --model-endpoint-location=global
-# Capture AGENT_ID from the output
 cd ../..
 
-# 8. Grant per-MCP egress IAM for the deployed agent
-./scripts/grant_agent_mcp_egress.sh \
-  --mcp \
-  --agent-id ${AGENT_ID} \
-  --mcp-filter "legacy-dms income-verification"
+# 6. Egress IAM (roles/iap.egressor) is Terraform-managed:
+#    - Endpoints (Google-API + custom services): granted to the agent
+#      principalSet, applied by `terraform apply` in step 4.
+#    - MCP servers (legacy-dms, income-verification, corporate-email): granted
+#      to the deployed agent's per-agent identity when option 5a is used
+#      (deploy_reasoning_engine=true). corporate-email is restricted to
+#      read-only tools via an IAM condition. With option 5b, MCP egress is not
+#      Terraform-managed (the agent identity is created outside Terraform).
 ```
 
 ## Test, register, clean up
@@ -148,8 +158,10 @@ cd ../..
 - **Cleanup:** `terraform destroy` (after deleting the deployed Reasoning
   Engine first).
 
-Each is covered in [`codelab.md`](codelab.md), including troubleshooting
-(gateway settle time, missing IAM, DNS peering, image tag conflicts).
+Each is covered in the
+[codelab](https://codelabs.developers.google.com/cloudnet-agent-gateway),
+including troubleshooting (gateway settle time, missing IAM, DNS peering,
+image tag conflicts).
 
 ## Contributing
 

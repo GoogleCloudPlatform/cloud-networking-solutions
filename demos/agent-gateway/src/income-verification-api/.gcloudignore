@@ -1,0 +1,19 @@
+# Controls what `gcloud builds submit` uploads as the build source.
+#
+# This is NOT .dockerignore — that one still applies, but only to the
+# `docker build` context once Cloud Build has the tarball. Without this file
+# gcloud auto-generates one from .gitignore semantics and writes it into the
+# tree, which would also drag .venv into the upload.
+#
+# Keep in sync with local.mcp_source_exclude in terraform/images.tf: the image
+# tag is a hash of everything not excluded there, so anything ignored here but
+# hashed there would rebuild an identical image under a new tag.
+.git/
+.gitignore
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+.ruff_cache/
+.mypy_cache/
+.pytest_cache/

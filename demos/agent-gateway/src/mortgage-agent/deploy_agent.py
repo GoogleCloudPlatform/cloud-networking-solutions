@@ -14,8 +14,9 @@
 
 """Deploy the mortgage assistant agent to Vertex AI Agent Engine.
 
-Uses the vertexai.agent_engines SDK with build_options to deploy the agent
-and work around the .venv/bin/python platform bug.
+Uses the vertexai.agent_engines SDK, with an `installation_scripts` hook that
+builds an overlay virtualenv in the container so the agent's dependencies layer
+over the base image instead of replacing it (see `_write_overlay_venv_script`).
 
 The agent discovers its MCP tools at runtime by listing `mcpServers` in the
 Agent Registry for `--project` / `--region`, so no per-service URL or URI
@@ -48,6 +49,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import shutil
@@ -57,6 +59,71 @@ import tempfile
 import time
 import urllib.error
 import urllib.request
+
+# Contents of the installation script executed by step 16/29 of the Agent Engine
+# build ("Executing user-provided UNIX commands from scripts in
+# ./installation_scripts"), before the requirements install in step 19.
+#
+# DO NOT REMOVE THIS. It looks like a compileall workaround -- that is how it was
+# originally described -- but its load-bearing effect is to make /code/.venv an
+# *overlay* virtualenv: writable site-packages of its own, plus
+# `include-system-site-packages = true` so the base image's interpreter packages
+# remain importable underneath. Step 19's `pip install` then lands in the overlay
+# and layers over the base image rather than overwriting it.
+#
+# Without this, step 19 installs straight onto the site-packages that the
+# platform's own serving harness imports from, and any unpinned requirement is
+# free to move a package the harness depends on. That happened on 2026-07-28:
+# the resolve advanced grpcio 1.82.1 -> 1.83.0 and
+# opentelemetry-resourcedetector-gcp 1.12.0a0 -> 1.14.0, and newly injected
+# httpx/httpcore/packaging that the base image had been satisfying. The build
+# stayed green and the image pushed, but the container then died during harness
+# import -- before uvicorn logged its first line -- so the deploy failed with
+# "failed to start and cannot serve traffic" and *zero* stderr to debug from.
+#
+# The base image does ship a usable .venv/bin/python for compileall on its own,
+# so the build gives no signal that this is missing. Only the runtime does.
+_OVERLAY_VENV_SCRIPT = """\
+#!/bin/bash
+# Create an overlay virtualenv at /code/.venv so the agent's dependency install
+# layers over the base image instead of replacing its site-packages.
+#
+# `include-system-site-packages = true` keeps the base image's packages (and the
+# platform's serving harness) importable, while site-packages here is writable by
+# appuser -- a bare symlink would make site.getsitepackages()[0] resolve to the
+# root-owned /usr/local/lib/python3.12/site-packages and fail with PermissionError.
+set -e
+PYTHON3=$(which python3)
+PY_VER=$(python3 -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')
+mkdir -p /code/.venv/bin
+mkdir -p /code/.venv/lib/python${PY_VER}/site-packages
+ln -sf "$PYTHON3" /code/.venv/bin/python
+ln -sf "$PYTHON3" /code/.venv/bin/python3
+cat > /code/.venv/pyvenv.cfg << PYCFG
+home = $(dirname $PYTHON3)
+include-system-site-packages = true
+PYCFG
+echo "Created .venv virtualenv (site-packages: /code/.venv/lib/python${PY_VER}/site-packages)"
+"""
+
+# Path of the script within the staging dir. The platform looks for
+# `./installation_scripts` at the root of the extracted dependencies tarball, so
+# this must also be listed in `extra_packages` -- `build_options` alone only
+# covers the SDK create path, not a Terraform `package_spec` deploy built by
+# `--build-only`.
+_OVERLAY_VENV_SCRIPT_PATH = "installation_scripts/create_venv.sh"
+
+
+def _write_overlay_venv_script(staging_dir: str) -> None:
+    """Write the overlay-venv installation script into ``staging_dir``.
+
+    See ``_OVERLAY_VENV_SCRIPT`` for why this is required.
+    """
+    script_path = os.path.join(staging_dir, _OVERLAY_VENV_SCRIPT_PATH)
+    os.makedirs(os.path.dirname(script_path), exist_ok=True)
+    with open(script_path, "w") as f:
+        f.write(_OVERLAY_VENV_SCRIPT)
+    os.chmod(script_path, stat.S_IRWXU | stat.S_IRGRP | stat.S_IXGRP)
 
 
 def _ge_deploy(
@@ -303,8 +370,8 @@ def main() -> None:
     )
     parser.add_argument(
         "--model",
-        default="gemini-3.1-flash-lite",
-        help="Gemini model name for the agent (default: gemini-3.1-flash-lite)",
+        default="gemini-3.5-flash-lite",
+        help="Gemini model name for the agent (default: gemini-3.5-flash-lite)",
     )
     parser.add_argument(
         "--model-endpoint-location",
@@ -351,13 +418,65 @@ def main() -> None:
             "OIDC ID tokens for MCP Cloud Run calls. The agent's identity must hold "
             "roles/iam.serviceAccountTokenCreator on this SA, and this SA must hold "
             "roles/run.invoker on each MCP Cloud Run service. Sourced from terraform "
-            "output `agent_mcp_invoker_email`. Default: $MCP_INVOKER_SA_EMAIL."
+            "output `agent_mcp_invoker_email`. Default: $MCP_INVOKER_SA_EMAIL, "
+            "falling back to agent-mcp-invoker@<project>.iam.gserviceaccount.com."
         ),
+    )
+    parser.add_argument(
+        "--build-only",
+        action="store_true",
+        help=(
+            "Package and upload the agent artifacts (pickle, dependencies, "
+            "requirements) to the staging bucket and write a manifest JSON, "
+            "WITHOUT creating/updating a reasoning engine. Used to feed the "
+            "Terraform google_vertex_ai_reasoning_engine package_spec."
+        ),
+    )
+    parser.add_argument(
+        "--artifacts-out",
+        default=None,
+        help=(
+            "Path to write the build-only manifest JSON (artifact layout + "
+            "python_version + agent_framework + class_methods). Relative paths "
+            "resolve against the current directory. Default: "
+            "<repo>/build/agent_artifacts.json."
+        ),
+    )
+    parser.add_argument(
+        "--gcs-dir",
+        default="agent_engine",
+        help="Staging-bucket subdirectory for the uploaded artifacts (default: agent_engine).",
     )
     args = parser.parse_args()
 
     if not args.project:
         parser.error("--project is required (or set $PROJECT_ID)")
+
+    # Fall back to the SA terraform creates in modules/agent-engine, whose
+    # account_id is hardcoded to "agent-mcp-invoker" — so the email is fully
+    # determined by the project and doesn't need `terraform output`. Derived
+    # from args.project (which itself defaults to $PROJECT_ID) so an explicit
+    # --project is honoured too. Deploys that don't use MCP-over-Cloud-Run are
+    # unaffected: the agent only impersonates this SA when it calls one.
+    #
+    # --project is accepted as either a project ID or a project number, but SA
+    # emails only exist in the ID form. Deriving from a number would produce an
+    # address that never resolves, and because the derived value is always
+    # truthy it would set MCP_INVOKER_SA_EMAIL and push the failure out to an
+    # opaque token-mint error at runtime. Leave it unset instead, which is the
+    # documented path: the agent logs an explicit "MCP_INVOKER_SA_EMAIL is not
+    # set" warning at discovery time.
+    if not args.mcp_invoker_sa:
+        if str(args.project).isdigit():
+            print(
+                f"WARNING: --project is a project number ({args.project}), so the "
+                "default --mcp-invoker-sa cannot be derived (SA emails require the "
+                "project ID). Pass --mcp-invoker-sa explicitly if this agent calls "
+                "IAM-protected MCP services.",
+                file=sys.stderr,
+            )
+        else:
+            args.mcp_invoker_sa = f"agent-mcp-invoker@{args.project}.iam.gserviceaccount.com"
 
     ge_deploy_needed = args.ge_deploy or args.ge_deploy_only
     oauth_client_secret = None
@@ -493,39 +612,7 @@ def main() -> None:
             os.path.join(staging_dir, "agent"),
             ignore=shutil.ignore_patterns("__pycache__", "*.pyc", ".pytest_cache"),
         )
-
-        # Create installation_scripts/ with a workaround for the
-        # platform bug where .venv/bin/python doesn't exist in the
-        # base image but the Dockerfile's compileall step expects it.
-        scripts_dir = os.path.join(staging_dir, "installation_scripts")
-        os.makedirs(scripts_dir)
-        script_path = os.path.join(scripts_dir, "create_venv.sh")
-        with open(script_path, "w") as f:
-            f.write("#!/bin/bash\n")
-            f.write("# Workaround: create a proper .venv for the compileall\n")
-            f.write("# step (step 20/21). The base image's Dockerfile runs:\n")
-            f.write("#   .venv/bin/python -m compileall \\\n")
-            f.write('#     "$(.venv/bin/python -c \\"import site; print(site.getsitepackages()[0])\\")"\n')
-            f.write("# A plain symlink causes site.getsitepackages()[0] to\n")
-            f.write("# return /usr/local/lib/python3.12/site-packages/ which\n")
-            f.write("# is root-owned => PermissionError as appuser.\n")
-            f.write("# Fix: create pyvenv.cfg so Python treats .venv/ as a\n")
-            f.write("# virtualenv with writable site-packages.\n")
-            f.write("set -e\n")
-            f.write("PYTHON3=$(which python3)\n")
-            f.write(
-                "PY_VER=$(python3 -c 'import sys; print(f\"{sys.version_info.major}.{sys.version_info.minor}\")')\n"
-            )
-            f.write("mkdir -p /code/.venv/bin\n")
-            f.write("mkdir -p /code/.venv/lib/python${PY_VER}/site-packages\n")
-            f.write('ln -sf "$PYTHON3" /code/.venv/bin/python\n')
-            f.write('ln -sf "$PYTHON3" /code/.venv/bin/python3\n')
-            f.write("cat > /code/.venv/pyvenv.cfg << PYCFG\n")
-            f.write("home = $(dirname $PYTHON3)\n")
-            f.write("include-system-site-packages = true\n")
-            f.write("PYCFG\n")
-            f.write('echo "Created .venv virtualenv (site-packages: /code/.venv/lib/python${PY_VER}/site-packages)"\n')
-        os.chmod(script_path, stat.S_IRWXU | stat.S_IRGRP | stat.S_IXGRP)
+        _write_overlay_venv_script(staging_dir)
 
         os.chdir(staging_dir)
 
@@ -558,16 +645,52 @@ def main() -> None:
                 "pydantic",
                 "opentelemetry-instrumentation-google-genai",
                 "opentelemetry-exporter-gcp-logging",
+                # --- Transitive pins -------------------------------------
+                # Nothing above changes version between builds, but their
+                # transitives resolve fresh every time, so an unchanged source
+                # tree produces a different container week to week. These are
+                # the twelve that drifted between the last known-good build
+                # (2026-07-14, build c7e12542) and 2026-07-28, pinned back to
+                # the known-good versions. Reproducing that resolve exactly is
+                # the point -- the 2026-07-28 container died during harness
+                # import, before uvicorn logged a line, leaving no stderr.
+                #
+                # The most likely culprit is the opentelemetry-*-gcp skew:
+                # resourcedetector-gcp went 1.12.0a0 -> 1.14.0 while the
+                # exporters stayed on 1.12.0a0, and GCP resource detection runs
+                # during startup. grpcio 1.82.1 -> 1.83.0 is the other
+                # candidate. Both are pinned here rather than bisected, because
+                # each deploy round trip costs ~9 minutes.
+                #
+                # These are transitives, so they are deliberately NOT mirrored
+                # into pyproject.toml -- that file describes the local dev
+                # environment, and uv.lock already pins it.
+                "aiohttp==3.14.1",
+                "google-cloud-bigtable==2.40.0",
+                "google-cloud-secret-manager==2.29.0",
+                "greenlet==3.5.3",
+                "grpcio==1.82.1",
+                "grpcio-status==1.81.1",
+                "joserfc==1.7.3",
+                "mcp==1.28.1",
+                "opentelemetry-resourcedetector-gcp==1.12.0a0",
+                "sse-starlette==3.4.5",
+                # opentelemetry-instrumentation (pulled in transitively by
+                # opentelemetry-instrumentation-google-genai above) constrains
+                # wrapt<2.0.0,>=1.0.0, so a 2.x pin here is unsatisfiable and
+                # either fails resolution or backtracks otel onto some other
+                # version. 1.17.3 is what uv.lock resolves to.
+                "wrapt==1.17.3",
+                "yarl==1.24.2",
             ],
-            extra_packages=[
-                "agent",
-                "installation_scripts/create_venv.sh",
-            ],
-            build_options={
-                "installation_scripts": [
-                    "installation_scripts/create_venv.sh",
-                ],
-            },
+            # The script must be in extra_packages, not just build_options:
+            # build_options is only honoured by the SDK create path, while a
+            # terraform package_spec deploy consumes the dependencies tarball
+            # directly. Listing it here puts it in the tarball either way, which
+            # is all Step 16 needs to find ./installation_scripts. Both are kept
+            # so the imperative path behaves identically.
+            extra_packages=["agent", _OVERLAY_VENV_SCRIPT_PATH],
+            build_options={"installation_scripts": [_OVERLAY_VENV_SCRIPT_PATH]},
             env_vars={
                 # Make denied MCP tool calls (gateway 403) fail fast instead of
                 # hanging the turn as a broken-stream TaskGroup/TimeoutError.
@@ -595,6 +718,97 @@ def main() -> None:
         if config:
             deploy_config.update(config)
 
+        if args.build_only:
+            # Stage the exact artifacts client.agent_engines.create() would
+            # upload (same pickle, deps tarball, requirements, class_methods),
+            # but do NOT create an engine. Terraform's package_spec consumes
+            # the resulting GCS URIs + class_methods via the manifest below.
+            # These _-prefixed helpers are SDK internals, safe only because the
+            # project pins google-cloud-aiplatform <1.154.
+            import json as _json
+
+            from vertexai._genai import _agent_engines_utils as _aeu
+
+            print(f"Build-only: staging artifacts to {staging_bucket}/{args.gcs_dir}/ (no engine create)...")
+            _aeu._prepare(
+                agent=app,
+                requirements=deploy_config["requirements"],
+                extra_packages=deploy_config["extra_packages"],
+                project=args.project,
+                location=args.region,
+                staging_bucket=staging_bucket,
+                gcs_dir_name=args.gcs_dir,
+            )
+            class_methods = [
+                _aeu._to_dict(s)
+                for s in _aeu._generate_class_methods_spec_or_raise(
+                    agent=app,
+                    operations=_aeu._get_registered_operations(agent=app),
+                )
+            ]
+            # Fingerprint of what was just staged. _prepare overwrites the same
+            # three object names on every build, so nothing in the artifact URIs
+            # moves when the agent changes -- terraform would report "No changes"
+            # and leave the engine serving the previous pickle. The engine module
+            # feeds this into an env var so a new build is an actual diff.
+            #
+            # Read back from GCS because _prepare streams straight to the bucket
+            # and leaves no local copy. cloudpickle is not guaranteed byte-stable,
+            # so an unchanged agent may still produce a new hash; that errs toward
+            # redeploying when nothing changed rather than never redeploying.
+            artifact_bucket = _aeu._get_gcs_bucket(
+                project=args.project,
+                location=args.region,
+                staging_bucket=staging_bucket,
+            )
+            artifact_digests = []
+            for filename in (
+                _aeu._BLOB_FILENAME,
+                _aeu._EXTRA_PACKAGES_FILE,
+                _aeu._REQUIREMENTS_FILE,
+            ):
+                blob = artifact_bucket.get_blob(f"{args.gcs_dir}/{filename}")
+                if blob is None:
+                    artifact_digests.append(f"{filename}:absent")
+                    continue
+                # md5_hash is unset for composite and some resumable uploads, and
+                # the pickle is big enough to hit that path. crc32c is always
+                # populated; generation is a last resort that changes on every
+                # overwrite, so it degrades to "always redeploy" rather than to
+                # "never redeploy".
+                digest = blob.md5_hash or blob.crc32c or blob.generation
+                artifact_digests.append(f"{filename}:{digest}")
+            artifact_hash = hashlib.sha256("|".join(artifact_digests).encode()).hexdigest()
+
+            # Deliberately bucket-free: the manifest records only the artifact
+            # layout, so terraform composes the gs:// URIs from its own
+            # project_id/agent_staging_bucket. Keeps the file portable between
+            # projects (and safe to regenerate) instead of pinning one bucket.
+            manifest = {
+                "python_version": f"{sys.version_info.major}.{sys.version_info.minor}",
+                "agent_framework": _aeu._get_agent_framework(agent_framework=None, agent=app),
+                "gcs_dir": args.gcs_dir,
+                "pickle_filename": _aeu._BLOB_FILENAME,
+                "dependencies_filename": _aeu._EXTRA_PACKAGES_FILE,
+                "requirements_filename": _aeu._REQUIREMENTS_FILE,
+                "artifact_hash": artifact_hash,
+                "class_methods": class_methods,
+            }
+            if args.artifacts_out:
+                out_path = (
+                    args.artifacts_out
+                    if os.path.isabs(args.artifacts_out)
+                    else os.path.join(original_cwd, args.artifacts_out)
+                )
+            else:
+                out_path = os.path.join(agent_dir, "..", "..", "build", "agent_artifacts.json")
+            out_path = os.path.abspath(out_path)
+            os.makedirs(os.path.dirname(out_path), exist_ok=True)
+            with open(out_path, "w") as mf:
+                _json.dump(manifest, mf, indent=2)
+            print(f"Staged artifacts and wrote manifest ({len(class_methods)} class methods): {out_path}")
+            return
+
         if args.update:
             engine = client.agent_engines.update(name=args.update, agent=app, config=deploy_config)
         elif args.enable_agent_identity:
@@ -612,65 +826,21 @@ def main() -> None:
             agent_id = reasoning_engine_name.split("/")[-1]
             print(f"Identity shell successfully created. ID: {agent_id}")
 
-            # 2. Grant permissions
-            print("\nStep 2: Pre-authorizing egress permissions via grant_agent_mcp_egress.sh...")
-            import subprocess
-
-            tf_vars = {}
-            tfvars_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "../../terraform/terraform.tfvars")
-            if os.path.exists(tfvars_path):
-                with open(tfvars_path) as f:
-                    for line in f:
-                        if "=" in line and not line.strip().startswith("#"):
-                            k, v = line.split("=", 1)
-                            tf_vars[k.strip()] = v.strip().strip('"').strip("'")
-
-            project_id = args.project
-            project_number = None
-            org_id = tf_vars.get("organization_id") or os.environ.get("ORG_ID")
-            if not org_id:
-                print(
-                    "Error: Could not resolve organization_id/ORG_ID. Please set it in "
-                    "terraform.tfvars or as ORG_ID environment variable.",
-                    file=sys.stderr,
-                )
-                sys.exit(1)
-
-            try:
-                res = subprocess.run(
-                    ["gcloud", "projects", "describe", project_id, "--format=value(projectNumber)"],
-                    capture_output=True,
-                    text=True,
-                    check=True,
-                )
-                project_number = res.stdout.strip()
-            except Exception as e:
-                print(f"Warning: could not resolve project number via gcloud: {e}")
-                project_number = os.environ.get("PROJECT_NUMBER")
-                if not project_number:
-                    print(
-                        "Error: Could not resolve project number. Please set the PROJECT_NUMBER environment variable.",
-                        file=sys.stderr,
-                    )
-                    sys.exit(1)
-
-            env = os.environ.copy()
-            env["PROJECT_ID"] = project_id
-            env["PROJECT_NUMBER"] = project_number
-            env["ORG_ID"] = org_id
-            env["REGION"] = args.region
-
-            script_path = os.path.join(
-                os.path.dirname(os.path.abspath(__file__)), "../../scripts/grant_agent_mcp_egress.sh"
+            # 2. Grant permissions.
+            #
+            # The roles/iap.egressor bindings this step used to apply via
+            # scripts/grant_agent_mcp_egress.sh are now owned by terraform (see
+            # terraform/modules/agent-registry-endpoints). Terraform can't know
+            # this agent's id until it exists, so wire it up after the fact:
+            # set iap_egressor_members and re-apply. Until then the agent has an
+            # identity but no egress, and gateway calls will be denied by IAP.
+            print("\nStep 2: Egress permissions are managed by terraform.")
+            print("  Add this agent's identity to iap_egressor_members and re-apply:")
+            print(
+                "    principal://agents.global.org-${ORG_ID}.system.id.goog/resources/aiplatform"
+                f"/projects/${{PROJECT_NUMBER}}/locations/{args.region}/reasoningEngines/{agent_id}"
             )
-            if os.path.exists(script_path):
-                try:
-                    subprocess.run([script_path, "--agent-id", agent_id], env=env, check=True)
-                    print("Direct egress IAM permissions successfully applied!")
-                except Exception as e:
-                    print(f"Error executing grant_agent_mcp_egress.sh: {e}")
-            else:
-                print(f"Warning: grant_agent_mcp_egress.sh not found at {script_path}")
+            print("  (or set deploy_reasoning_engine=true and let terraform own the engine outright)")
 
             # 3. Update the agent with the actual pickled code
             print(f"\nStep 3: Updating reasoning engine {reasoning_engine_name} with actual application code...")

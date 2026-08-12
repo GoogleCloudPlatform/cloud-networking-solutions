@@ -16,6 +16,30 @@
 
 import logging
 import os
+import threading
+import time
+import weakref
+
+# Monkeypatch vertexai to disable the telemetry API check which fails with mTLS
+# SSL handshake errors through the Agent Gateway.
+try:
+    import vertexai.agent_engines.templates.adk as adk_template
+
+    adk_template._warn_if_telemetry_api_disabled = lambda: None
+except Exception:
+    pass
+
+try:
+    import vertexai.preview.reasoning_engines.templates.adk as preview_adk_template
+
+    # Unlike the non-preview template, where this is a module-level function,
+    # the preview template defines it as an AdkApp method and calls it as
+    # `self._warn_if_telemetry_api_disabled()`. A module-level attribute would
+    # never shadow the bound method, so patch the class.
+    preview_adk_template.AdkApp._warn_if_telemetry_api_disabled = lambda self: None
+except Exception:
+    pass
+
 from typing import Any
 from urllib.parse import urlparse
 
@@ -144,10 +168,34 @@ DISCOVERED_MCP_SERVERS: list[dict[str, Any]] = []
 # _PickleSafeAgent.__reduce__ -> _build_agent -> _discover_mcp_toolsets) does
 # not construct a second MCPSessionManager in the same process, which trips
 # "Context has already been used to create a Connection" inside ADK/anyio.
-# Empty results are cached too so a failing discovery is not retried (and
-# re-warned) on every unpickle. Membership is therefore frozen per worker
-# process; new MCP servers require a redeploy or worker restart.
+# A successful (non-empty) result is therefore frozen for the life of the
+# worker process; new MCP servers require a redeploy or worker restart.
+#
+# Empty results are cached too — otherwise a genuinely serverless registry
+# would be re-queried and re-warned on every unpickle — but only until
+# _NEGATIVE_CACHE_TTL_SECONDS elapses. Discovery now runs on the first request
+# rather than at import, so an empty result is frequently just a race with IAM
+# propagation (the window terraform's engine_depends_on gate exists to cover).
+# Caching that permanently would strand the container on utility tools only,
+# for its whole lifetime, with no way back short of replacement.
 _CACHED_TOOLSETS: list | None = None
+
+# time.monotonic() at which _CACHED_TOOLSETS was last written. Only consulted
+# for empty results; see _is_cache_stale().
+_CACHED_AT: float = 0.0
+
+# How long an empty discovery result is trusted before it is retried. Long
+# enough that a registry that really is empty is not re-queried per request,
+# short enough that the agent recovers within a minute of its grants landing.
+_NEGATIVE_CACHE_TTL_SECONDS: float = 60.0
+
+# Serializes _discover_mcp_toolsets(). Discovery is on the request path via the
+# dynamic instruction provider, so without this two concurrent first-requests
+# both miss the cache and both run a full discovery, building duplicate
+# MCPToolset objects and duplicate sessions for the same servers. Reentrant
+# because agent rebuild paths (__reduce__ / __deepcopy__ -> _build_agent) can
+# be reached from inside a call that already holds it.
+_DISCOVERY_LOCK = threading.RLock()
 
 # Companion cache for DISCOVERED_MCP_SERVERS. The instruction template is
 # rendered from DISCOVERED_MCP_SERVERS, so on a cache hit we must restore the
@@ -156,6 +204,10 @@ _CACHED_TOOLSETS: list | None = None
 # render an empty instruction and reintroduce the hallucination this caching
 # is meant to prevent.
 _CACHED_DISCOVERED: list[dict[str, Any]] | None = None
+
+# Active agent instances created in this process. Used to dynamically synchronize
+# discovered MCP toolsets with the agent's Pydantic-managed tools list at request time.
+_ACTIVE_AGENTS: list[weakref.ref] = []
 
 # Per-service prose, keyed by registry displayName. Entries here get rendered
 # into the instruction's MCP services block alongside each service's live
@@ -311,8 +363,94 @@ def _handle_tool_error(
     }
 
 
+def _make_base_tools() -> list:
+    """The utility tools every agent carries, ahead of any discovered toolsets.
+
+    Built fresh per call so each agent owns its own list. Shared by _build_agent
+    and _sync_toolsets_to_agents, which must agree: the sync path uses the
+    length of this list to decide whether an agent is still unsynced.
+    """
+    return [
+        tools.get_current_time,
+        tools.list_mcp_connections,
+    ]
+
+
+def _is_cache_stale() -> bool:
+    """True when the cached result is empty and has outlived its TTL.
+
+    Non-empty results never go stale — re-running discovery would build a
+    second MCPSessionManager in the same process. Only the empty (failed or
+    genuinely-no-servers) result is retried.
+    """
+    if _CACHED_TOOLSETS:
+        return False
+    return (time.monotonic() - _CACHED_AT) >= _NEGATIVE_CACHE_TTL_SECONDS
+
+
+def _cache_empty_result() -> list:
+    """Record an empty discovery result and return it.
+
+    Timestamped so _is_cache_stale() can expire it, which is what lets the
+    agent recover from a discovery that failed only because IAM had not
+    propagated yet.
+    """
+    global _CACHED_TOOLSETS, _CACHED_DISCOVERED, _CACHED_AT
+    _CACHED_TOOLSETS = []
+    _CACHED_DISCOVERED = []
+    _CACHED_AT = time.monotonic()
+    return _CACHED_TOOLSETS
+
+
+def _sync_toolsets_to_agents(toolsets: list, *, only_if_unsynced: bool, source: str) -> None:
+    """Replace the tools list of every live agent with base tools + `toolsets`.
+
+    Callers hold _DISCOVERY_LOCK. The replacement is a single slice assignment
+    rather than clear() + extend(): ADK's _process_agent_tools early-returns on
+    a falsy agent.tools, so a concurrent turn that observed the window between
+    those two calls would reach the model with no tools declared at all.
+
+    `only_if_unsynced` skips agents that already carry more than the base tools,
+    for the cache-hit path where a re-push would be redundant.
+    """
+    dead_refs = []
+    active_agents = []
+    for r in list(_ACTIVE_AGENTS):
+        agent = r()
+        if agent is not None:
+            active_agents.append(agent)
+        else:
+            dead_refs.append(r)
+    for r in dead_refs:
+        try:
+            _ACTIVE_AGENTS.remove(r)
+        except ValueError:
+            pass
+
+    base_tools = _make_base_tools()
+    for agent in active_agents:
+        try:
+            if only_if_unsynced and not (len(agent.tools) <= len(base_tools) and toolsets):
+                continue
+            agent.tools[:] = base_tools + toolsets
+            logger.info("Synchronized %d %s MCP toolset(s) to agent %s", len(toolsets), source, agent.name)
+        except Exception:
+            logger.exception("Failed to synchronize %s toolsets to agent %s", source, agent.name)
+
+
 def _discover_mcp_toolsets() -> list:
     """Discover MCP servers from the Agent Registry and return ADK toolsets.
+
+    Serialized on _DISCOVERY_LOCK: this runs on the request path via the
+    dynamic instruction provider, and concurrent first-requests would otherwise
+    each build their own duplicate toolsets and sessions.
+    """
+    with _DISCOVERY_LOCK:
+        return _discover_mcp_toolsets_locked()
+
+
+def _discover_mcp_toolsets_locked() -> list:
+    """Discovery body. Callers must hold _DISCOVERY_LOCK.
 
     Project, location, and an optional server-name filter come from env vars
     set by deploy_agent.py:
@@ -331,8 +469,8 @@ def _discover_mcp_toolsets() -> list:
     aborting agent startup, so the agent still boots (with utility tools only)
     if the registry is unreachable.
     """
-    global _CACHED_TOOLSETS, _CACHED_DISCOVERED
-    if _CACHED_TOOLSETS is not None:
+    global _CACHED_TOOLSETS, _CACHED_DISCOVERED, _CACHED_AT
+    if _CACHED_TOOLSETS is not None and not _is_cache_stale():
         logger.debug(
             "Reusing %d cached MCP toolset(s); skipping registry discovery.",
             len(_CACHED_TOOLSETS),
@@ -341,7 +479,16 @@ def _discover_mcp_toolsets() -> list:
         # instruction renderer always sees the same view as the toolset list.
         DISCOVERED_MCP_SERVERS.clear()
         DISCOVERED_MCP_SERVERS.extend(_CACHED_DISCOVERED or [])
+
+        _sync_toolsets_to_agents(_CACHED_TOOLSETS, only_if_unsynced=True, source="cached")
+
         return _CACHED_TOOLSETS
+
+    if _CACHED_TOOLSETS is not None:
+        logger.info(
+            "Cached MCP discovery was empty and is older than %.0fs; retrying registry discovery.",
+            _NEGATIVE_CACHE_TTL_SECONDS,
+        )
 
     DISCOVERED_MCP_SERVERS.clear()
 
@@ -361,9 +508,7 @@ def _discover_mcp_toolsets() -> list:
             project,
             location,
         )
-        _CACHED_TOOLSETS = []
-        _CACHED_DISCOVERED = []
-        return _CACHED_TOOLSETS
+        return _cache_empty_result()
 
     filter_str = os.environ.get("MCP_REGISTRY_FILTER")
     endpoint = os.environ.get("MCP_REGISTRY_ENDPOINT")
@@ -389,9 +534,7 @@ def _discover_mcp_toolsets() -> list:
             "is missing a transitive dep (typically a2a-sdk).",
             e,
         )
-        _CACHED_TOOLSETS = []
-        _CACHED_DISCOVERED = []
-        return _CACHED_TOOLSETS
+        return _cache_empty_result()
 
     try:
         if endpoint:
@@ -409,9 +552,7 @@ def _discover_mcp_toolsets() -> list:
             location,
             effective_endpoint,
         )
-        _CACHED_TOOLSETS = []
-        _CACHED_DISCOVERED = []
-        return _CACHED_TOOLSETS
+        return _cache_empty_result()
 
     raw_servers = response.get("mcpServers", [])
     effective_endpoint = endpoint or getattr(_ar_module, "AGENT_REGISTRY_BASE_URL", "<adk-default>")
@@ -502,7 +643,20 @@ def _discover_mcp_toolsets() -> list:
 
     _CACHED_TOOLSETS = toolsets
     _CACHED_DISCOVERED = list(DISCOVERED_MCP_SERVERS)
+    _CACHED_AT = time.monotonic()
+
+    _sync_toolsets_to_agents(toolsets, only_if_unsynced=False, source="discovered")
+
     return _CACHED_TOOLSETS
+
+
+def _lazy_instruction_provider(ctx=None) -> str:
+    """Dynamic instruction provider that triggers tool discovery and formats instructions."""
+    try:
+        _discover_mcp_toolsets()
+    except Exception:
+        logger.exception("Failed to discover MCP toolsets in dynamic instruction provider")
+    return _INSTRUCTION_TEMPLATE.format(mcp_services_doc=_render_mcp_services_doc())
 
 
 class _PickleSafeAgent(Agent):
@@ -516,29 +670,38 @@ class _PickleSafeAgent(Agent):
 
 
 def _build_agent():
-    """Build the agent with utility tools plus discovered MCP toolsets.
+    """Build the agent with utility tools plus any already-discovered toolsets.
 
     Called at import time for local dev, and at unpickle time on Agent Engine.
+
+    Seeded from _CACHED_TOOLSETS so a rebuild does not start tool-less. Without
+    the seed an agent only gains toolsets once _lazy_instruction_provider runs
+    and _sync_toolsets_to_agents pushes them in. That happens to work today —
+    ADK's _preprocess_async renders instructions before it iterates
+    canonical_tools() — but it makes tool visibility depend on processor
+    ordering, so any path that enumerates tools without rendering the
+    instruction sees only the base tools.
+
+    Holds _DISCOVERY_LOCK so the seed cannot interleave with a discovery that
+    is midway through publishing a new toolset list. The lock is an RLock, so
+    a rebuild triggered from under it (deepcopy of a live agent) still works.
     """
-    _tools: list = [
-        tools.get_current_time,
-        tools.list_mcp_connections,
-    ]
-    _tools.extend(_discover_mcp_toolsets())
-
-    instruction = _INSTRUCTION_TEMPLATE.format(mcp_services_doc=_render_mcp_services_doc())
-
-    return _PickleSafeAgent(
-        model=os.environ.get("MODEL_NAME", "gemini-3.1-flash-lite"),
-        name="mortgage_assistant_agent",
-        description=(
-            "A mortgage underwriting assistant that connects to legacy document management, "
-            "income verification, and corporate email systems through an Agent Gateway."
-        ),
-        instruction=instruction,
-        tools=_tools,
-        on_tool_error_callback=_handle_tool_error,
-    )
+    with _DISCOVERY_LOCK:
+        agent = _PickleSafeAgent(
+            model=os.environ.get("MODEL_NAME", "gemini-3.5-flash-lite"),
+            name="mortgage_assistant_agent",
+            description=(
+                "A mortgage underwriting assistant that connects to legacy document management, "
+                "income verification, and corporate email systems through an Agent Gateway."
+            ),
+            instruction=_lazy_instruction_provider,
+            # Same shape _sync_toolsets_to_agents installs, so an agent seeded
+            # here is already "synced" and its only_if_unsynced pass skips it.
+            tools=_make_base_tools() + list(_CACHED_TOOLSETS or []),
+            on_tool_error_callback=_handle_tool_error,
+        )
+        _ACTIVE_AGENTS.append(weakref.ref(agent))
+    return agent
 
 
 root_agent = _build_agent()

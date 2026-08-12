@@ -34,3 +34,68 @@ variable "platform_admin_members" {
   type        = list(string)
   default     = []
 }
+
+# -----------------------------------------------------------------------------
+# Reasoning engine deployment (optional). When deploy_reasoning_engine is true,
+# this module deploys the mortgage agent as a google_vertex_ai_reasoning_engine
+# instead of relying on the imperative src/mortgage-agent/deploy_agent.py.
+# -----------------------------------------------------------------------------
+
+variable "region" {
+  description = "Region for the reasoning engine and MCP registry scope (distinct from the model endpoint location)."
+  type        = string
+  default     = "us-central1"
+}
+
+variable "deploy_reasoning_engine" {
+  description = "Deploy the mortgage agent as a google_vertex_ai_reasoning_engine. Requires agent_gateway_id and a prebuilt agent_source_archive_path."
+  type        = bool
+  default     = false
+}
+
+variable "agent_gateway_id" {
+  description = "Full Agent Gateway resource name (projects/.../agentGateways/<name>) the reasoning engine egresses through in AGENT_TO_ANYWHERE mode. Required when deploy_reasoning_engine is true."
+  type        = string
+  default     = null
+}
+
+variable "agent_artifacts_manifest_path" {
+  description = "Path to the build-only manifest JSON (artifact layout + python_version + class_methods) produced by `deploy_agent.py --build-only`. Consumed by package_spec. Required when deploy_reasoning_engine is true."
+  type        = string
+  default     = null
+}
+
+variable "agent_staging_bucket" {
+  description = "GCS bucket holding the artifacts staged by `deploy_agent.py --build-only`, as a gs:// URI. Mirrors that script's --staging-bucket. Defaults to gs://<project_id>-staging, the same convention the script uses."
+  type        = string
+  default     = null
+
+  validation {
+    condition     = var.agent_staging_bucket == null || startswith(coalesce(var.agent_staging_bucket, "gs://"), "gs://")
+    error_message = "agent_staging_bucket must be a gs:// URI."
+  }
+}
+
+variable "agent_model" {
+  description = "Gemini model id for the agent (env MODEL_NAME)."
+  type        = string
+  default     = "gemini-3.5-flash-lite"
+}
+
+variable "model_endpoint_location" {
+  description = "Vertex model endpoint location (env GOOGLE_CLOUD_LOCATION); 'global' hits the global Gemini endpoint. Intentionally decoupled from region."
+  type        = string
+  default     = "global"
+}
+
+variable "agent_display_name" {
+  description = "Display name for the deployed reasoning engine."
+  type        = string
+  default     = "Mortgage Assistant Agent"
+}
+
+variable "engine_depends_on" {
+  description = "Opaque values the reasoning engine must wait for before it is created. Intended for the agent-registry-endpoints module's endpoint_egressor_binding_ids, so the agent's roles/iap.egressor grants exist before the container boots and starts egressing through the gateway. Value is never read; only its dependency edge matters."
+  type        = any
+  default     = null
+}

@@ -31,6 +31,14 @@
 # into a `locals` block so the gating logic lives in one place rather than
 # scattered across every consumer.
 locals {
+  # Default the reasoning-engine artifacts manifest to where
+  # `deploy_agent.py --build-only` writes it, so the two-phase build/apply flow
+  # needs no extra tfvar. (Variable defaults can't reference path.*.)
+  agent_artifacts_manifest_path = coalesce(
+    var.agent_artifacts_manifest_path,
+    "${path.module}/../build/agent_artifacts.json",
+  )
+
   # MCP private zone domain only exists when the master flag is on AND the
   # operator has supplied a zone. Used by anything that needs the LB-fronted
   # MCP hostname (Agent Gateway DNS peering, Model Armor authz hosts, agent
@@ -145,10 +153,10 @@ resource "google_artifact_registry_repository" "registry" {
 # Cloud Build — Source bucket for regional Cloud Build submissions
 resource "google_storage_bucket" "cloudbuild" {
   project                     = var.project_id
-  name                        = coalesce(var.cloudbuild_bucket_name, "${var.project_id}_cloudbuild")
+  name                        = coalesce(var.cloudbuild_bucket_name, "${var.project_id}-${var.name_prefix}-cloudbuild")
   location                    = var.region
   uniform_bucket_level_access = true
-  force_destroy               = false
+  force_destroy               = var.cloudbuild_bucket_force_destroy
 
   lifecycle_rule {
     condition {
@@ -184,6 +192,27 @@ resource "google_storage_bucket_iam_member" "cloudbuild_service_agent" {
   bucket = google_storage_bucket.cloudbuild.name
   role   = "roles/storage.objectAdmin"
   member = "serviceAccount:service-${module.foundation.project_number}@gcp-sa-cloudbuild.iam.gserviceaccount.com"
+}
+
+# IAM is eventually consistent, so ordering the grants ahead of the builds is
+# not enough on its own: depends_on only proves the SetIamPolicy call returned,
+# not that the binding is in effect. Cloud Build validates the source bucket as
+# the build service account when the build is created, so a build submitted
+# inside the propagation window fails with a PERMISSION_DENIED that names the
+# invoking user rather than the service account actually missing access.
+#
+# This only costs time on the first apply against a project — the sleep is
+# re-run only when one of the grants below is replaced. It shortens the race
+# rather than closing it; if a fresh project still trips the error, re-running
+# apply picks the builds back up, or raise this duration.
+resource "time_sleep" "cloudbuild_iam_propagation" {
+  create_duration = "30s"
+
+  triggers = {
+    compute_sa_bucket    = google_storage_bucket_iam_member.cloudbuild_compute_sa.id
+    compute_sa_registry  = google_project_iam_member.cloudbuild_registry.id
+    service_agent_bucket = google_storage_bucket_iam_member.cloudbuild_service_agent.id
+  }
 }
 
 # Phase 5: Certificates — Google-managed TLS via Certificate Manager
@@ -278,9 +307,29 @@ module "agent_engine" {
 
   project_id     = var.project_id
   project_number = module.foundation.project_number
+  region         = var.region
 
   organization_id        = var.organization_id
   platform_admin_members = var.platform_admin_members
+
+  # Optional declarative reasoning-engine deploy (replaces deploy_agent.py's
+  # create path). Gateway association requires enable_agent_gateway.
+  deploy_reasoning_engine       = var.deploy_reasoning_engine
+  agent_gateway_id              = var.enable_agent_gateway ? module.agent_gateway[0].agent_gateway_id : null
+  agent_artifacts_manifest_path = local.agent_artifacts_manifest_path
+  agent_staging_bucket          = var.agent_staging_bucket
+  agent_model                   = var.agent_model
+  model_endpoint_location       = var.model_endpoint_location
+  agent_display_name            = var.agent_display_name
+
+  # Hold the engine until the agent principalSet holds roles/iap.egressor on the
+  # registered endpoints (googleapis + custom), so it can egress the moment it
+  # boots. Passed as a value rather than a module-level depends_on on purpose:
+  # agent_registry_endpoints also consumes this module's per-agent identity for
+  # its MCP-server bindings, and a module-level edge would make that a cycle.
+  # At resource granularity there is none — the engine precedes the MCP
+  # bindings and follows the endpoint bindings.
+  engine_depends_on = var.enable_agent_registry_endpoints ? module.agent_registry_endpoints[0].endpoint_egressor_binding_ids : null
 
   depends_on = [module.foundation]
 }
@@ -361,9 +410,25 @@ resource "google_dns_record_set" "apigee_northbound" {
 module "mcp_services" {
   source = "./modules/mcp-cloud-run"
 
-  project_id              = var.project_id
-  region                  = var.region
-  services                = var.mcp_services
+  project_id = var.project_id
+  region     = var.region
+
+  # `source_dir` is consumed at the root (images.tf) rather than passed down;
+  # the module only ever sees a resolved image URI — either the tag Cloud Build
+  # just pushed, or the prebuilt image pinned in tfvars.
+  services = {
+    for k, v in var.mcp_services : k => {
+      image              = local.mcp_image_uri[k]
+      container_port     = v.container_port
+      otel_service_name  = v.otel_service_name
+      min_instance_count = v.min_instance_count
+      max_instance_count = v.max_instance_count
+      cpu                = v.cpu
+      memory             = v.memory
+      env                = v.env
+    }
+  }
+
   private_networking      = var.enable_cloud_run_private_networking
   mcp_internal_dns_domain = local.mcp_internal_dns_domain_or_null
   # Restricts roles/run.invoker to the agent-mcp-invoker SA. Null when
@@ -371,7 +436,14 @@ module "mcp_services" {
   # and Cloud Run is unreachable until invoker is granted out-of-band.
   invoker_sa_email = var.enable_agent_engine ? module.agent_engine[0].agent_mcp_invoker_email : null
 
-  depends_on = [module.foundation, google_artifact_registry_repository.registry]
+  # terraform_data.mcp_image must finish pushing before Cloud Run pulls the tag.
+  # The dependency is not implicit: the image URI is derived from a source hash,
+  # not from an attribute of the build resource.
+  depends_on = [
+    module.foundation,
+    google_artifact_registry_repository.registry,
+    terraform_data.mcp_image,
+  ]
 }
 
 # When the Agent Gateway is enabled, allocate the MCP internal LB VIP from the
@@ -452,8 +524,8 @@ module "mcp_internal_lb" {
 
 # Phase 14: Agent Gateway — governance plane fronting the MCP services.
 # Provisions the gateway in AGENT_TO_ANYWHERE mode with PSC-I egress and IAP
-# and Model Armor authz extensions. Per-MCP-server `roles/iap.egressor`
-# bindings are issued out-of-band by `scripts/grant_agent_mcp_egress.sh`.
+# and Model Armor authz extensions. Per-endpoint `roles/iap.egressor` bindings
+# are managed in the agent_registry_endpoints module (see iap_egressor_members).
 module "agent_gateway" {
   count  = var.enable_agent_gateway ? 1 : 0
   source = "./modules/agent-gateway"
@@ -477,23 +549,11 @@ module "agent_gateway" {
   model_armor_request_template_id  = var.enable_model_armor ? module.model_armor[0].request_template_id : null
   model_armor_response_template_id = var.enable_model_armor ? module.model_armor[0].response_template_id : null
 
-  # Scope the Model Armor CONTENT_AUTHZ policy to the per-MCP-service Host
-  # values: when private networking is on, that's `<svc>.<mcp domain>` (the
-  # internal LB hostname). When private networking is off, the agent reaches
-  # Cloud Run via *.run.app, so flatten over every URL form Cloud Run exposes
-  # for each service (both the hash form `<svc>-<hash>-<region>.a.run.app`
-  # AND the project-number form `<svc>-<project-number>.<region>.run.app`) —
-  # an agent may legitimately call either, and Model Armor host matching is
-  # exact-string. The trailing dot on the private zone domain is stripped so
-  # the value matches what HTTP clients actually send in the Host header.
-  model_armor_authz_hosts = var.enable_model_armor ? (
-    var.enable_cloud_run_private_networking
-    ? [for svc in keys(var.mcp_services) :
-    "${svc}.${trimsuffix(var.mcp_internal_dns_zone.domain, ".")}"]
-    : flatten([for svc in keys(var.mcp_services) :
-      [for u in module.mcp_services.service_url_list[svc] :
-    replace(replace(u, "https://", ""), "/", "")]])
-  ) : []
+  # NOTE: the Model Armor CONTENT_AUTHZ policy is deliberately unscoped — it
+  # applies to all gateway traffic, not just the MCP service hosts. The
+  # per-service Host-value computation that used to feed http_rules was removed
+  # along with the module's model_armor_authz_hosts variable; recover it from
+  # git history if host scoping is reinstated.
 
   authz_extension_fail_open = var.agent_gateway_authz_fail_open
   iap_iam_enforcement_mode  = var.agent_gateway_iap_iam_enforcement_mode
@@ -539,9 +599,9 @@ resource "google_project_iam_member" "run_admin" {
 }
 
 # Phase 15: Agent Registry Endpoints — governance plane fronting the Google API
-# services AND the MCP Cloud Run services. Registers all regional, mTLS, and REP
-# variants of the specified Google APIs, plus one entry per MCP Cloud Run service
-# (URL = https://<service>.<mcp_internal_dns_zone.domain>).
+# services AND the MCP Cloud Run services. Registers each Google API endpoint in
+# var.agent_registry_endpoints exactly as listed, plus one entry per MCP Cloud
+# Run service (URL = https://<service>.<mcp_internal_dns_zone.domain>).
 module "agent_registry_endpoints" {
   count  = var.enable_agent_registry_endpoints ? 1 : 0
   source = "./modules/agent-registry-endpoints"
@@ -549,8 +609,8 @@ module "agent_registry_endpoints" {
   project_id = var.project_id
   location   = var.region
 
-  google_apis     = var.agent_registry_google_apis
-  custom_services = var.agent_registry_custom_services
+  google_api_endpoints = var.agent_registry_endpoints
+  custom_services      = var.agent_registry_custom_services
 
   mcp_servers = {
     for name in keys(var.mcp_services) : name => {
@@ -563,6 +623,23 @@ module "agent_registry_endpoints" {
   mcp_url_mode            = var.enable_cloud_run_private_networking ? "internal_lb" : "cloud_run"
   mcp_internal_dns_domain = local.mcp_internal_dns_domain_or_null
   mcp_service_urls        = module.mcp_services.service_urls
+
+  # Grant the agent principalSet roles/iap.egressor on each endpoint. Empty when
+  # Agent Engine is disabled (no agent identity to grant).
+  iap_egressor_members = var.enable_agent_engine ? [module.agent_engine[0].agent_identity_principal] : []
+
+  # Grant the deployed agent's per-agent identity roles/iap.egressor on each MCP
+  # server. Only populated when the reasoning engine is deployed via Terraform
+  # (its identity is unknown otherwise). corporate-email is restricted to
+  # read-only tools via an IAM condition; the others are unconditional.
+  mcp_egressor_members = var.enable_agent_engine && var.deploy_reasoning_engine ? [module.agent_engine[0].agent_engine_identity] : []
+  mcp_egressor_conditions = {
+    "corporate-email" = {
+      expression  = "api.getAttribute('iap.googleapis.com/mcp.tool.isReadOnly', false) == true || api.getAttribute('iap.googleapis.com/mcp.toolName', '') == ''"
+      title       = "ReadOnlyToolsOnly"
+      description = "Restrict the mortgage agent to read-only tools on corporate-email"
+    }
+  }
 
   depends_on = [module.foundation, module.mcp_services, module.mcp_internal_lb]
 }
