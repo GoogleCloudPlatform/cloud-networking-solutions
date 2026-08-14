@@ -218,6 +218,12 @@ def main():
         if staging_dir not in sys.path:
             sys.path.insert(0, staging_dir)
 
+        # Set environment variables from CLI args prior to importing agent
+        if args.mcp_server_url:
+            os.environ["MCP_URL"] = args.mcp_server_url
+        if args.mcp_invoker_sa:
+            os.environ["MCP_INVOKER_SA"] = args.mcp_invoker_sa
+
         # Import agent after vertexai.init
         try:
             from vertexai.agent_engines import AdkApp
