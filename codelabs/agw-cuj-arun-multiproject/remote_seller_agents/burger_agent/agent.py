@@ -1,19 +1,16 @@
-"""
-Copyright 2025 Google LLC
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-    https://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-"""
-
+# Copyright 2026 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     https://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 from pydantic import BaseModel
 import uuid
 from crewai import Agent, Crew, LLM, Task, Process
@@ -89,7 +86,7 @@ Provided below is the available burger menu and it's related price:
     1. Always ensure the user already confirmed the order and total price. This confirmation may already given in the user query.
     2. Use `create_burger_order` tool to create the order
     3. Finally, always provide response to the user about the detailed ordered items, price breakdown and total, and order ID
-    
+
 - Set response status to input_required if asking for user order confirmation.
 - Set response status to error if there is an error while processing the request.
 - Set response status to completed if the request is complete.

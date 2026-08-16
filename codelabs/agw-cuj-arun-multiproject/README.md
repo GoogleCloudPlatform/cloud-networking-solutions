@@ -24,7 +24,7 @@ sequenceDiagram
 
     Client->>Concierge: query("I want to order 1 burger and 2 pizzas")
     activate Concierge
-    
+
     par Route via Gateway to Burger Agent (ALLOW Policy)
         Concierge->>Gateway: stream_query() via Agent Gateway
         Gateway->>Burger: Forward request with SPIFFE mTLS identity
@@ -47,7 +47,7 @@ sequenceDiagram
 Root orchestrators (`agent-runtime1`) and specialist seller agents (`agent-runtime2`) execute in separate Reasoning Engine containers on Vertex AI Agent Engine, ensuring clean architectural boundaries and independent scalability.
 
 ### 2. Dynamic Autodiscovery via Agent Registry
-Think of the **Agent Registry** as a **Corporate Directory** for AI agents. 
+Think of the **Agent Registry** as a **Corporate Directory** for AI agents.
 When your main manager agent (the **Purchasing Concierge**) wakes up:
 * **The Challenge**: It needs to know who its team members are (**Burger Seller Agent** and **Pizza Seller Agent**) and what their direct extension numbers (Reasoning Engine resource IDs) are, without hardcoding them.
 * **How ADK Helps**: The **Agent Development Kit (ADK)** provides a built-in phone book lookup tool (`AgentRegistry`).
@@ -74,7 +74,7 @@ response = registry.list_agents()
 for agent in response.get("agents", []):
     display_name = agent.get("displayName")
     runtime_ref = agent.get("adkAgentDefinition", {}).get("provisionedReasoningEngine", {}).get("reasoningEngine")
-    
+
     stream_url = None
     for proto in agent.get("protocols", []):
         for iface in proto.get("interfaces", []):

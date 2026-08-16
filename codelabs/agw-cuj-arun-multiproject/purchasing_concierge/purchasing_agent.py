@@ -73,15 +73,15 @@ appropriate seller remote agents.
 
 Execution:
 - For actionable tasks, you can use `send_task` to assign tasks to remote agents to perform.
-- When the remote agent is repeatedly asking for user confirmation, assume that the remote agent doesn't have access to user's conversation context. 
+- When the remote agent is repeatedly asking for user confirmation, assume that the remote agent doesn't have access to user's conversation context.
     So improve the task description to include all the necessary information related to that agent
 - Never ask user permission when you want to connect with remote agents. If you need to make connection with multiple remote agents, directly
     connect with them without asking user permission or asking user preference
-- Always show the detailed response information from the seller agent and propagate it properly to the user. 
-- If the remote seller is asking for confirmation, rely the confirmation question with proper and necessary information to the user if the user haven't do so. 
+- Always show the detailed response information from the seller agent and propagate it properly to the user.
+- If the remote seller is asking for confirmation, rely the confirmation question with proper and necessary information to the user if the user haven't do so.
 - If the user already confirmed the related order in the past conversation history, you can confirm on behalf of the user
 - Do not give irrelevant context to remote seller agent. For example, ordered pizza item is not relevant for the burger seller agent
-- Never ask order confirmation to the remote seller agent 
+- Never ask order confirmation to the remote seller agent
 
 Please rely on tools to address the request, and don't make up the response. If you are not sure, please ask the user for more details.
 Focus on the most recent parts of the conversation primarily.
@@ -117,7 +117,7 @@ Current active seller agent: {current_agent["active_agent"]}
                 or os.getenv("GOOGLE_CLOUD_LOCATION")
                 or "us-central1"
             )
-            
+
             discovered_agents = {}
             try:
                 import google.auth
@@ -139,10 +139,10 @@ Current active seller agent: {current_agent["active_agent"]}
                         display_name = service.get("displayName", "")
                         name = service.get("name", "")
                         interfaces = service.get("interfaces", [])
-                        
+
                         if not interfaces:
                             continue
-                            
+
                         target_url = interfaces[0].get("url", "")
                         re_match = re.search(r"(projects/\d+/locations/[^/]+/reasoningEngines/\d+)", target_url)
                         resource_path = re_match.group(1) if re_match else target_url
@@ -201,10 +201,10 @@ Current active seller agent: {current_agent["active_agent"]}
 
         if agent_name not in self.agent_ids and agent_name not in self.agent_urls:
             return f"Error: Agent {agent_name} not found"
-            
+
         state = tool_context.state
         state["active_agent"] = agent_name
-        
+
         if "session_id" not in state:
             state["session_id"] = str(uuid.uuid4())
         session_id = state["session_id"]
@@ -230,10 +230,10 @@ Current active seller agent: {current_agent["active_agent"]}
                 final_text = res["output"]
             else:
                 final_text = str(res)
-            
+
             if not final_text:
                 final_text = "Task executed successfully by remote agent."
-                
+
             print(f"Response from {agent_name}: {final_text}")
             return final_text
         except Exception as e:

@@ -176,4 +176,3 @@ cython_debug/
 
 # AI Agent workspace customizations
 .agents/
-

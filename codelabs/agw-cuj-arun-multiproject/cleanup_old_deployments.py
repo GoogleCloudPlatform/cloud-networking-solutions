@@ -24,10 +24,10 @@ def delete_old_deployments(project: str, region: str, keep_latest: bool = False,
     try:
         response = client.list_reasoning_engines(parent=parent)
         engines = list(response.reasoning_engines)
-        
+
         # Sort engines by create_time descending (newest first)
         engines.sort(key=lambda x: x.create_time, reverse=True)
-        
+
         seen = set()
         for eng in engines:
             if target_display_names and eng.display_name not in target_display_names:
@@ -43,7 +43,7 @@ def delete_old_deployments(project: str, region: str, keep_latest: bool = False,
                     print(f"Deleting older duplicate deployment: {eng.name} ({eng.display_name})")
             else:
                 print(f"Deleting deployment: {eng.name} ({eng.display_name})")
-            
+
             try:
                 op = client.delete_reasoning_engine(request=DeleteReasoningEngineRequest(name=eng.name, force=True))
                 op.result()
@@ -60,7 +60,6 @@ if __name__ == "__main__":
     parser.add_argument("--region", required=True, help="Google Cloud Region")
     parser.add_argument("--keep-latest", action="store_true", help="Keep the latest deployment for each agent type and only delete older duplicates")
     args = parser.parse_args()
-    
+
     target_names = ["burger-seller-agent-adk", "pizza-seller-agent-adk", "purchasing-concierge-adk"]
     delete_old_deployments(args.project, args.region, keep_latest=args.keep_latest, target_display_names=target_names)
-

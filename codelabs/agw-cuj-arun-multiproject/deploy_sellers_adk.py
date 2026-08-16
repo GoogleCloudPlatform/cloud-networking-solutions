@@ -92,7 +92,7 @@ def main():
             while isinstance(input, dict):
                 user_id = user_id or input.get("user_id") or input.get("userId")
                 session_id = session_id or input.get("session_id") or input.get("sessionId")
-                
+
                 next_val = input.get("message")
                 if next_val is None:
                     next_val = input.get("input")
@@ -100,7 +100,7 @@ def main():
                     next_val = input.get("prompt")
                 if next_val is None:
                     next_val = input.get("text")
-                
+
                 if next_val is not None:
                     input = next_val
                 else:
@@ -114,7 +114,7 @@ def main():
             message = str(input) if input is not None else ""
             effective_user_id = user_id or "console-tester-user"
             effective_session_id = session_id
-                
+
             return message, effective_user_id, effective_session_id, kwargs
 
         def query(self, input = None, user_id = None, session_id = None, **kwargs) -> dict:

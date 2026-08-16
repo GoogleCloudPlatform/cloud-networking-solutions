@@ -73,7 +73,7 @@ Rules:
     1. Always ensure the user already confirmed the order and total price. This confirmation may already given in the user query.
     2. Use `create_burger_order` tool to create the order
     3. Finally, always provide response to the user about the detailed ordered items, price breakdown and total, and order ID
-    
+
 - DO NOT make up menu or price, Always rely on the provided menu given to you as context.
 """,
     tools=[create_burger_order],
