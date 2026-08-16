@@ -35,4 +35,3 @@ The code within the subdirectories is intended to be checked out or downloaded a
 *   **Directory:** [`agw-cuj-arun-multiproject/`](agw-cuj-arun-multiproject/)
 *   **Description:** Implement cross-project agent-to-agent (A2A) orchestration with Agent Gateway and Vertex AI Agent Runtime, featuring dynamic agent autodiscovery via Agent Registry and zero-trust SPIFFE mTLS machine identity governance.
 *   **Published Codelab Link:** TBD
-
