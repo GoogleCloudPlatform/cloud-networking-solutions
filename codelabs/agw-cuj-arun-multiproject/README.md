@@ -44,7 +44,7 @@ sequenceDiagram
 ## Key Features & Best Practices
 
 ### 1. Decoupled Multi-Runtime Isolation
-Root orchestrators (`agent-runtime1`) and specialist seller agents (`agent-runtime2`) execute in separate Reasoning Engine containers on Vertex AI Agent Engine, ensuring clean architectural boundaries and independent scalability.
+Root orchestrators (`agent-runtime1`) and specialist seller agents (`agent-runtime2`) execute in separate Reasoning Engine containers on Vertex AI Agent Runtime, ensuring clean architectural boundaries and independent scalability.
 
 ### 2. Dynamic Autodiscovery via Agent Registry
 Think of the **Agent Registry** as a **Corporate Directory** for AI agents.
