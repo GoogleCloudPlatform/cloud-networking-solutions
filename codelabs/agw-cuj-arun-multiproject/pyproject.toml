@@ -1,0 +1,23 @@
+[project]
+name = "cross-project-multiagent"
+version = "1.0.0"
+description = "Multi-Agent Purchasing Concierge on Agent Runtime (ADK)"
+requires-python = ">=3.11,<3.13"
+dependencies = [
+    "google-adk[a2a,agent-identity]==1.34.0",
+    "google-genai",
+    "pydantic",
+    "google-cloud-aiplatform[agent_engines,adk]>=1.40.0",
+    "cloudpickle>=3.0.0",
+    "python-dotenv",
+    "opentelemetry-instrumentation-httpx",
+    "opentelemetry-instrumentation-grpc",
+    "opentelemetry-instrumentation-google-genai",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["."]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
