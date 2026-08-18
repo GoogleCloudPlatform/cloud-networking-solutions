@@ -48,7 +48,7 @@ resource "google_dns_record_set" "certificate_validation_regional" {
 # Private DNS Zone for internal gateways
 module "internal_dns_zone" {
   count      = var.dns_zone_domain != null ? 1 : 0
-  source     = "github.com/GoogleCloudPlatform/cloud-foundation-fabric//modules/dns?ref=v55.3.0"
+  source     = "github.com/GoogleCloudPlatform/cloud-foundation-fabric//modules/dns?ref=v55.4.0"
   project_id = var.project_id
   name       = var.internal_dns_zone_name
   zone_config = {
