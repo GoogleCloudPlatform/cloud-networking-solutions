@@ -3,56 +3,45 @@
   "extends": [
     "config:recommended"
   ],
-  "platformAutomerge": true,
-  "automergeType": "pr",
-  "automergeStrategy": "squash",
-  "packageRules": [
-    {
-      "matchUpdateTypes": [
-        "minor",
-        "patch"
-      ],
-      "automerge": true
-    },
-    {
-      "matchDepTypes": [
-        "devDependencies"
-      ],
-      "matchUpdateTypes": [
-        "minor",
-        "patch"
-      ],
-      "automerge": true
-    },
-    {
-      "matchManagers": [
-        "terraform"
-      ],
-      "matchDepTypes": [
-        "required_provider",
-        "required_version"
-      ],
-      "matchUpdateTypes": [
-        "minor",
-        "patch"
-      ],
-      "automerge": true
-    }
+  "timezone": "America/Los_Angeles",
+  "schedule": [
+    "before 6am on monday"
   ],
+  "prCreation": "not-pending",
+  "prHourlyLimit": 0,
+  "prConcurrentLimit": 10,
   "dependencyDashboard": true,
   "dependencyDashboardTitle": "Dependency Dashboard",
-  "prHourlyLimit": 2,
-  "prConcurrentLimit": 5,
   "labels": [
     "dependencies"
   ],
+  "packageRules": [
+    {
+      "description": "Batch all routine non-vulnerability updates across all package managers into a single weekly PR",
+      "matchPackagePatterns": [
+        "*"
+      ],
+      "groupName": "Weekly dependency updates",
+      "groupSlug": "weekly-dependencies"
+    }
+  ],
   "vulnerabilityAlerts": {
+    "enabled": true,
+    "schedule": [
+      "at any time"
+    ],
+    "groupName": null,
     "labels": [
+      "dependencies",
       "security"
     ]
   },
   "lockFileMaintenance": {
     "enabled": true,
-    "automerge": true
+    "schedule": [
+      "before 6am on monday"
+    ],
+    "groupName": "Weekly dependency updates",
+    "groupSlug": "weekly-dependencies"
   }
 }
