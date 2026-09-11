@@ -37,9 +37,14 @@ variable "region" {
 }
 
 variable "name_prefix" {
-  description = "Prefix for resource names"
+  description = "Prefix for resource names. Constrained to 1-21 lowercase RFC1035 characters so every name derived from it is legal: compute resources (networking, the ILB) require RFC1035, the Artifact Registry repository_id disallows uppercase and underscores, and the default Cloud Build bucket name is <project_id>-<name_prefix>-cloudbuild — with project_id at its 30-character maximum, 21 characters is what keeps that under the 63-character GCS limit. Without the bound these surface as raw API errors partway through an apply rather than at plan time."
   type        = string
   default     = "gateway"
+
+  validation {
+    condition     = can(regex("^[a-z]([-a-z0-9]{0,19}[a-z0-9])?$", var.name_prefix))
+    error_message = "name_prefix must be 1-21 characters, start with a lowercase letter, end with a lowercase letter or digit, and contain only lowercase letters, digits, and hyphens."
+  }
 }
 
 variable "organization_id" {
@@ -55,7 +60,37 @@ variable "platform_admin_members" {
 }
 
 variable "cloudbuild_bucket_name" {
-  description = "Override the Cloud Build source bucket name. Defaults to <project_id>_cloudbuild, which matches the bucket gcloud/Cloud Build SDKs auto-pick when no --gcs-source-staging-dir is passed; overriding the name breaks that convenience."
+  description = "Override the Cloud Build source bucket name. Defaults to <project_id>-<name_prefix>-cloudbuild — a bucket owned by this demo alone, so the force_destroy default below can only ever delete this stack's own build sources. Deliberately NOT the <project_id>_cloudbuild convention bucket that gcloud/Cloud Build SDKs auto-pick: that one is shared by every build in the project, and force-destroying it on teardown would take other workloads' sources and logs with it. images.tf passes --gcs-source-staging-dir explicitly, so nothing here relies on the auto-pick name. Existing deployments that want to keep using the shared bucket must set this to \"<project_id>_cloudbuild\" — otherwise the rename replaces the bucket, and force_destroy deletes the old one's contents on apply."
+  type        = string
+  default     = null
+}
+
+variable "cloudbuild_bucket_force_destroy" {
+  description = "Allow `terraform destroy` to delete the Cloud Build source bucket while it still holds objects. Defaults to true because the default bucket is demo-scoped and only ever holds disposable build sources and logs (it already expires them after 30 days), and every MCP image build repopulates it — with force_destroy off, teardown of a demo project always fails on a non-empty bucket. Set to false if you repoint cloudbuild_bucket_name at a shared or long-lived bucket."
+  type        = bool
+  default     = true
+
+  # Repointing cloudbuild_bucket_name at the shared <project_id>_cloudbuild
+  # bucket does not, on its own, endanger it: the rename forces a replacement,
+  # terraform destroys the bucket it owns and then fails 409 creating one that
+  # already exists. The hazard is the step after that. Making the shared bucket
+  # work means importing it, at which point it inherits force_destroy from here
+  # and a later `terraform destroy` empties a bucket holding every other
+  # workload's build sources and logs. Catch that pairing at plan time.
+  validation {
+    #
+    # try() rather than a null check: terraform's && does not reliably
+    # short-circuit, and endswith(null, ...) is an error, not false.
+    condition = !(
+      var.cloudbuild_bucket_force_destroy &&
+      try(endswith(var.cloudbuild_bucket_name, "_cloudbuild"), false)
+    )
+    error_message = "cloudbuild_bucket_name points at a <project_id>_cloudbuild convention bucket, which every build in the project shares. Set cloudbuild_bucket_force_destroy = false so terraform destroy cannot empty it."
+  }
+}
+
+variable "cloudbuild_service_account" {
+  description = "Service account email that MCP image builds run as. Leave null to let Cloud Build use the Compute Engine default SA, which is what the IAM grants in main.tf provision and is correct for most projects. Projects created with the default Compute SA disabled (an org policy on newer projects) reject builds that omit an explicit service account — set this to a build SA holding roles/storage.objectViewer on the source bucket, roles/artifactregistry.writer, and roles/logging.logWriter (builds that name a service account must also write logs somewhere; images.tf passes --default-buckets-behavior=regional-user-owned-bucket for that)."
   type        = string
   default     = null
 }
@@ -177,9 +212,10 @@ variable "mcp_internal_dns_zone" {
 }
 
 variable "mcp_services" {
-  description = "Map of MCP service name to deployment configuration. The map key becomes the Cloud Run service name AND the URL-mask token (e.g. legacy-dms.<mcp_internal_dns_zone.domain> -> Cloud Run service 'legacy-dms')."
+  description = "Map of MCP service name to deployment configuration. The map key becomes the Cloud Run service name AND the URL-mask token (e.g. legacy-dms.<mcp_internal_dns_zone.domain> -> Cloud Run service 'legacy-dms'). `source_dir` names the directory under src/ holding the Dockerfile; it is not always the map key (income-verification is built from src/income-verification-api). Leave `image` null to have `terraform apply` build and push the image via Cloud Build; set it to pin a prebuilt image and skip the build entirely."
   type = map(object({
-    image              = string
+    source_dir         = string
+    image              = optional(string)
     container_port     = optional(number, 8080)
     otel_service_name  = optional(string)
     min_instance_count = optional(number, 0)
@@ -365,6 +401,42 @@ variable "enable_agent_engine" {
   default     = false
 }
 
+variable "deploy_reasoning_engine" {
+  description = "Deploy the mortgage agent as a google_vertex_ai_reasoning_engine (declarative alternative to src/mortgage-agent/deploy_agent.py). Requires enable_agent_engine + enable_agent_gateway and prebuilt artifacts (see agent_artifacts_manifest_path). Also enables the per-agent MCP-server egressor bindings."
+  type        = bool
+  default     = false
+}
+
+variable "agent_artifacts_manifest_path" {
+  description = "Path to the build-only manifest JSON (artifact layout + python_version + class_methods) for the reasoning engine's package_spec. Defaults to ../build/agent_artifacts.json. Build with: cd src/mortgage-agent && uv run python deploy_agent.py --build-only ..."
+  type        = string
+  default     = null
+}
+
+variable "agent_staging_bucket" {
+  description = "GCS bucket (gs:// URI) holding the artifacts staged by `deploy_agent.py --build-only`. Must match that script's --staging-bucket. Defaults to gs://<project_id>-staging, the same convention the script uses."
+  type        = string
+  default     = null
+}
+
+variable "agent_model" {
+  description = "Gemini model id for the deployed agent (env MODEL_NAME). Passed through to modules/agent-engine unconditionally, so this default — not the module's — is what an unset tfvars deploys."
+  type        = string
+  default     = "gemini-3.5-flash-lite"
+}
+
+variable "model_endpoint_location" {
+  description = "Vertex model endpoint location for the deployed agent (env GOOGLE_CLOUD_LOCATION)."
+  type        = string
+  default     = "global"
+}
+
+variable "agent_display_name" {
+  description = "Display name for the deployed reasoning engine."
+  type        = string
+  default     = "Mortgage Assistant Agent"
+}
+
 # ==============================================================================
 # PSC INTERFACE CONFIGURATION
 # ==============================================================================
@@ -468,22 +540,19 @@ variable "enable_agent_registry_endpoints" {
   default     = false
 }
 
-variable "agent_registry_google_apis" {
-  description = "Map of Google API IDs to their display names to register in Agent Registry"
-  type        = map(string)
-  default = {
-    aiplatform             = "Vertex AI Platform"
-    cloudresourcemanager   = "Cloud Resource Manager"
-    global-discoveryengine = "Global Discovery Engine"
-    discoveryengine        = "Discovery Engine"
-    logging                = "Logging"
-    monitoring             = "Monitoring"
-    oauth2                 = "OAuth2"
-    telemetry              = "Telemetry"
-    trace                  = "Trace"
-    agentregistry          = "Agent Registry"
-    iap                    = "Identity-Aware Proxy"
-  }
+variable "agent_registry_endpoints" {
+  description = "Google API endpoint URLs registered as interfaces under a single \"googleapis\" Agent Registry service. A \"{region}\" token is replaced with var.region."
+  type        = list(string)
+  default = [
+    "https://agentregistry.googleapis.com",
+    "https://aiplatform.mtls.googleapis.com",
+    "https://cloudresourcemanager.mtls.googleapis.com",
+    "https://iamcredentials.mtls.googleapis.com",
+    "https://telemetry.mtls.googleapis.com",
+    "https://{region}-aiplatform.mtls.googleapis.com",
+    "https://{region}-aiplatform.googleapis.com",
+    "https://aiplatform.{region}.rep.googleapis.com",
+  ]
 }
 
 variable "agent_registry_custom_services" {

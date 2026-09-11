@@ -237,7 +237,9 @@ class TestInstructionRendering:
             patch.object(agent_module, "DISCOVERED_MCP_SERVERS", self._DISCOVERED),
         ):
             built = agent_module._build_agent()
-        instruction = built.instruction
+            instruction = built.instruction
+            if callable(instruction):
+                instruction = instruction()
         # Concrete prefixed names present.
         assert "`legacy_dms_search_documents`" in instruction
         assert "`legacy_dms_get_document`" in instruction

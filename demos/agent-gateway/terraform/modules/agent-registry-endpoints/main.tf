@@ -38,36 +38,12 @@ locals {
     }
   }
 
-  # Flatten each Google API into its five endpoint variants (global, mTLS,
-  # locational, locational mTLS, and regional REP), keyed by service_id. IDs,
-  # display names, and URLs mirror the variants the old registration script
-  # produced 1:1.
-  google_api_variants = merge([
-    for id, name in var.google_apis : {
-      # service_id must be 4-63 chars ([a-z][a-z0-9-]{2,61}[a-z0-9]); pad API
-      # ids shorter than 4 chars (e.g. "iap") while keeping the real URL host.
-      (length(id) >= 4 ? id : "${id}-endpoint") = {
-        display_name = name
-        url          = "https://${id}.googleapis.com"
-      }
-      "${id}-mtls" = {
-        display_name = "${name} mTLS"
-        url          = "https://${id}.mtls.googleapis.com"
-      }
-      "${var.location}-${id}" = {
-        display_name = "${name} Locational"
-        url          = "https://${var.location}-${id}.googleapis.com"
-      }
-      "${var.location}-${id}-mtls" = {
-        display_name = "${name} Locational mTLS"
-        url          = "https://${var.location}-${id}.mtls.googleapis.com"
-      }
-      "${id}-${var.location}-rep" = {
-        display_name = "${name} Regional (REP)"
-        url          = "https://${id}.${var.location}.rep.googleapis.com"
-      }
-    }
-  ]...)
+  # Google API endpoint URLs, each registered as an interface under the single
+  # "googleapis" service below. A "{region}" token is replaced with var.location
+  # for portability (e.g. "{region}-aiplatform" -> "us-central1-aiplatform").
+  google_api_interface_urls = [
+    for url in var.google_api_endpoints : replace(url, "{region}", var.location)
+  ]
 }
 
 # Cross-variable input validation. Variable `validation` blocks can't reference
@@ -106,19 +82,21 @@ resource "terraform_data" "mcp_input_check" {
   }
 }
 
-# Google API endpoints (global, mTLS, locational, and REP variants). These are
-# plain endpoints with no spec, exposed over JSON-RPC.
+# All Google API endpoints registered as interfaces under a SINGLE "googleapis"
+# Agent Registry service (one entry, one interface per URL in
+# var.google_api_endpoints). Spec-less endpoint, JSON-RPC on every interface.
 resource "google_agent_registry_service" "google_apis" {
-  for_each = local.google_api_variants
-
   project      = var.project_id
   location     = var.location
-  service_id   = each.key
-  display_name = each.value.display_name
+  service_id   = "googleapis"
+  display_name = "Google APIs"
 
-  interfaces {
-    url              = each.value.url
-    protocol_binding = "JSONRPC"
+  dynamic "interfaces" {
+    for_each = local.google_api_interface_urls
+    content {
+      url              = interfaces.value
+      protocol_binding = "JSONRPC"
+    }
   }
 
   endpoint_spec {
@@ -173,4 +151,82 @@ resource "google_agent_registry_service" "mcp" {
   }
 
   depends_on = [terraform_data.mcp_input_check]
+}
+
+# roles/iap.egressor grants for the agent identity on each endpoint. These are
+# the allow-policy bindings the gateway's IAP REQUEST_AUTHZ extension evaluates
+# when an agent egresses to a registered endpoint. Scoped to the NO_SPEC
+# endpoints only (google_apis + custom); MCP servers are intentionally excluded.
+#
+# Migrated from the former scripts/grant_agent_mcp_egress.sh. Uses the
+# non-authoritative `_member` form to mirror the script's add-iam-policy-binding
+# semantics (preserve any other bindings on the resource).
+locals {
+  # The endpoint services eligible for egressor bindings, keyed by service_id.
+  # google_apis is a single service (all Google API URLs are interfaces on it),
+  # so wrap it in a one-element map to match the shape of the custom for_each.
+  endpoint_services = merge(
+    { (google_agent_registry_service.google_apis.service_id) = google_agent_registry_service.google_apis },
+    google_agent_registry_service.custom,
+  )
+
+  # One binding per (endpoint, member) pair. Empty when iap_egressor_members is
+  # empty, which disables the feature entirely.
+  iap_egressor_bindings = {
+    for pair in setproduct(keys(local.endpoint_services), var.iap_egressor_members) :
+    "${pair[0]}::${pair[1]}" => { service_id = pair[0], member = pair[1] }
+  }
+}
+
+resource "google_iap_agent_registry_endpoint_iam_member" "endpoint_egressor" {
+  for_each = local.iap_egressor_bindings
+
+  project  = var.project_id
+  location = var.location
+  # The IAP endpoints collection is keyed by the server-generated resource id
+  # (the last segment of registry_resource, e.g. agentregistry-0000...), NOT the
+  # friendly service_id.
+  endpoint_id = basename(local.endpoint_services[each.value.service_id].registry_resource)
+  role        = "roles/iap.egressor"
+  member      = each.value.member
+}
+
+# roles/iap.egressor grants for the agent identity on each MCP server. These are
+# the per-server allow-policy bindings the gateway's IAP REQUEST_AUTHZ extension
+# evaluates when the agent invokes an MCP tool. Migrated from the two former
+# scripts/grant_agent_mcp_egress.sh --mcp runs: legacy-dms/income-verification
+# get an unconditional binding; corporate-email gets a conditional one via
+# var.mcp_egressor_conditions (read-only tools only). Non-authoritative _member.
+locals {
+  # Key by (service_id, member index) rather than the member value, so the
+  # for_each keys are known at plan time even when the member is a reasoning
+  # engine identity that only exists after apply (avoids "Invalid for_each
+  # argument"). The member itself is carried as a (possibly computed) value.
+  mcp_egressor_bindings = merge([
+    for mi, m in var.mcp_egressor_members : {
+      for sid in keys(google_agent_registry_service.mcp) :
+      "${sid}::${mi}" => { service_id = sid, member = m }
+    }
+  ]...)
+}
+
+resource "google_iap_agent_registry_mcp_server_iam_member" "mcp_egressor" {
+  for_each = local.mcp_egressor_bindings
+
+  project  = var.project_id
+  location = var.location
+  # Keyed by the server-generated resource id (last segment of
+  # registry_resource), not the friendly service_id.
+  mcp_server_id = basename(google_agent_registry_service.mcp[each.value.service_id].registry_resource)
+  role          = "roles/iap.egressor"
+  member        = each.value.member
+
+  dynamic "condition" {
+    for_each = lookup(var.mcp_egressor_conditions, each.value.service_id, null) == null ? [] : [var.mcp_egressor_conditions[each.value.service_id]]
+    content {
+      expression  = condition.value.expression
+      title       = condition.value.title
+      description = condition.value.description
+    }
+  }
 }

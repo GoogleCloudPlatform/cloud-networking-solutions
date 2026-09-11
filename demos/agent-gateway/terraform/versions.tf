@@ -18,8 +18,10 @@ terraform {
   required_version = ">= 1.12.2"
   required_providers {
     google = {
-      source  = "hashicorp/google"
-      version = ">= 7.39.0"
+      source = "hashicorp/google"
+      # 7.40.0 introduced google_iap_agent_registry_endpoint_iam_* / _mcp_server_iam_*
+      # bindings in modules/agent-registry-endpoints).
+      version = ">= 7.40.0"
     }
     google-beta = {
       source  = "hashicorp/google-beta"
@@ -32,6 +34,12 @@ terraform {
     null = {
       source  = "hashicorp/null"
       version = ">= 3.0"
+    }
+    external = {
+      # images.tf probes Artifact Registry at plan time so a deleted image
+      # rebuilds instead of stranding Cloud Run on a tag that no longer exists.
+      source  = "hashicorp/external"
+      version = ">= 2.3"
     }
     time = {
       source  = "hashicorp/time"

@@ -14,11 +14,6 @@
 
 
 
-output "dashboard_id" {
-  description = "Resource ID of the authorization-debugging Cloud Monitoring dashboard."
-  value       = google_monitoring_dashboard.authorization_debugging.id
-}
-
 output "log_bucket_id" {
   description = "Resource ID of the _Default log bucket with Log Analytics enabled."
   value       = google_logging_project_bucket_config.default_analytics.id

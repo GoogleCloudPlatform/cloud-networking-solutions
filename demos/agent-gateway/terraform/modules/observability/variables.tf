@@ -15,6 +15,6 @@
 
 
 variable "project_id" {
-  description = "GCP project ID hosting the _Default log bucket and the Cloud Monitoring dashboard."
+  description = "GCP project ID hosting the _Default log bucket."
   type        = string
 }
