@@ -29,11 +29,10 @@ import uvicorn
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Initialize FastMCP with disabled DNS rebinding protection for Cloud Run (enabling json_response for Streamable HTTP)
+# Initialize FastMCP with disabled DNS rebinding protection for Cloud Run
 mcp = FastMCP(
     "Weather Server",
     transport_security=TransportSecuritySettings(enable_dns_rebinding_protection=False),
-    json_response=True,
 )
 
 GEOCODING_URL = "https://geocoding-api.open-meteo.com/v1/search"
@@ -168,4 +167,4 @@ if __name__ == "__main__":
     # Run the app using uvicorn (respecting PORT env var set by Cloud Run)
     port = int(os.getenv("PORT", "8080"))
     logger.info(f"Starting MCP Weather Server on port {port}")
-    uvicorn.run(app, host="0.0.0.0", port=port)
+    uvicorn.run(app, host="0.0.0.0", port=port, lifespan="on")

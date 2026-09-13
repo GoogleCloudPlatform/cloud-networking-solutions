@@ -96,9 +96,9 @@ def get_auth_headers(context: Optional[Any] = None) -> Dict[str, str]:
     return {}
 
 
-# Define connection parameters for Weather MCP toolset
+# Define connection parameters for Weather MCP toolset with 30s timeout
 mcp_url = os.getenv('MCP_URL', 'http://localhost:8080/mcp')
-connection_params = StreamableHTTPConnectionParams(url=mcp_url)
+connection_params = StreamableHTTPConnectionParams(url=mcp_url, timeout=30.0)
 
 # Instantiate Weather MCP Toolset with OIDC authentication header provider
 weather_mcp_tools = McpToolset(
