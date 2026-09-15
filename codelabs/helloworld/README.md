@@ -18,14 +18,14 @@ flowchart TD
         subgraph ReasoningEngine["Vertex AI Agent Engine (Container Runtime)"]
             APIServer["ADK API Server (uvicorn / fast_api)"]
             Runner["ADK Runner & GenAI SDK (aiohttp / grpc)"]
-            
+
             subgraph ContainerConfig["Zero-Touch Trust & Network Configuration"]
                 EnvVars["hello_world/.env & .agent_engine_config.json\n• SSL_CERT_FILE=/app/agents/hello_world/ca-bundle.crt\n• GOOGLE_CLOUD_DISABLE_DIRECT_PATH=true\n• GOOGLE_API_USE_MTLS=never\n• GOOGLE_API_USE_CLIENT_CERTIFICATE=false\n• GOOGLE_API_PREVENT_AGENT_TOKEN_SHARING_FOR_GCP_SERVICES=false"]
                 CABundle["hello_world/ca-bundle.crt\n(Mozilla Public Roots + Gateway TLS Inspection CA)"]
             end
-            
+
             Identity["Agent Identity (SPIFFE SVID)\nagents.global.org-.../resources/aiplatform/..."]
-            
+
             APIServer --> Runner
             Runner --> EnvVars
             Runner --> CABundle
