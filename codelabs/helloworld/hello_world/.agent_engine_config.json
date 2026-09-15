@@ -1,0 +1,22 @@
+{
+  "agent_gateway_config": {
+    "agent_to_anywhere_config": {
+      "agent_gateway": "projects/mode-garden/locations/us-central1/agentGateways/agw-soundwave-us-central1-ata"
+    }
+  },
+  "identity_type": "AGENT_IDENTITY",
+  "env_vars": {
+    "SSL_CERT_FILE": "/app/agents/hello_world/ca-bundle.crt",
+    "REQUESTS_CA_BUNDLE": "/app/agents/hello_world/ca-bundle.crt",
+    "GRPC_DEFAULT_SSL_ROOTS_FILE_PATH": "/app/agents/hello_world/ca-bundle.crt",
+    "GOOGLE_CLOUD_DISABLE_DIRECT_PATH": "true",
+    "GOOGLE_API_USE_MTLS": "never",
+    "GOOGLE_API_USE_MTLS_ENDPOINT": "never",
+    "GOOGLE_API_USE_CLIENT_CERTIFICATE": "false",
+    "GOOGLE_API_PREVENT_AGENT_TOKEN_SHARING_FOR_GCP_SERVICES": "false",
+    "GOOGLE_CLOUD_PROJECT": "mode-garden",
+    "GOOGLE_CLOUD_LOCATION": "us-central1",
+    "GOOGLE_GENAI_USE_VERTEXAI": "1",
+    "GOOGLE_CLOUD_AGENT_ENGINE_ENABLE_TELEMETRY": "true"
+  }
+}

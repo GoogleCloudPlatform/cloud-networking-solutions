@@ -1,0 +1,16 @@
+# Python bytecode & cache
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+
+# Deployment state cache (per-environment Reasoning Engine ID)
+.deploy_state.json
+
+# Temporary ADK deployment directories
+*_tmp*/
+
+# OS / Editor artifacts
+.DS_Store
+*.Identifier
