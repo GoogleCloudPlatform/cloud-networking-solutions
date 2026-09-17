@@ -13,14 +13,6 @@
 # limitations under the License.
 
 locals {
-  # Strip a trailing dot so the URL matches what HTTP clients send in the Host header
-  # (var.mcp_internal_dns_domain may be an FQDN like "mcp-server.internal.").
-  mcp_internal_dns_domain_trimmed = (
-    var.mcp_internal_dns_domain != null
-    ? trimsuffix(var.mcp_internal_dns_domain, ".")
-    : null
-  )
-
   mcp_registrations = {
     for name, cfg in var.mcp_servers : name => {
       id             = name
@@ -30,11 +22,7 @@ locals {
       # Both URL modes must include the /mcp path: FastMCP mounts the protocol
       # endpoint at /mcp (see src/*/main.py: mcp.http_app(path="/mcp", ...)),
       # and Cloud Run returns 404 for any other path, including /.
-      url = (
-        var.mcp_url_mode == "internal_lb"
-        ? "https://${name}.${local.mcp_internal_dns_domain_trimmed}/mcp"
-        : "${var.mcp_service_urls[name]}/mcp"
-      )
+      url = "${var.mcp_service_urls[name]}/mcp"
     }
   }
 
@@ -74,14 +62,6 @@ locals {
 # other variables, so we surface the precondition failures via terraform_data.
 resource "terraform_data" "mcp_input_check" {
   lifecycle {
-    precondition {
-      condition = (
-        length(var.mcp_servers) == 0 ||
-        var.mcp_url_mode != "internal_lb" ||
-        var.mcp_internal_dns_domain != null
-      )
-      error_message = "mcp_internal_dns_domain is required when mcp_url_mode is 'internal_lb' and mcp_servers is non-empty."
-    }
     precondition {
       condition = (
         var.mcp_url_mode != "cloud_run" ||

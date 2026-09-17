@@ -75,8 +75,15 @@ resource "google_compute_router_nat" "nat_gateway" {
   project                            = var.project_id
   router                             = google_compute_router.nat_router.name
   region                             = var.region
-  nat_ip_allocate_option             = "AUTO_ONLY"
-  source_subnetwork_ip_ranges_to_nat = "ALL_SUBNETWORKS_ALL_IP_RANGES"
+  
+  nat_ip_allocate_option = "MANUAL_ONLY"
+  nat_ips                = [google_compute_address.static_address.self_link]
+
+  source_subnetwork_ip_ranges_to_nat = "LIST_OF_SUBNETWORKS"
+  subnetwork {
+    name                    = google_compute_subnetwork.agent_gateway[0].self_link
+    source_ip_ranges_to_nat = ["ALL_IP_RANGES"]
+  }
 
   log_config {
     enable = true
@@ -84,19 +91,10 @@ resource "google_compute_router_nat" "nat_gateway" {
   }
 }
 
-# Private DNS zone for Apigee internal resolution (no VPC attachment)
-# This zone is consumed by Apigee via DNS peering, not by VPC workloads
-module "apigee_internal_dns_zone" {
-  count      = var.apigee_internal_dns_zone != null ? 1 : 0
-  source     = "github.com/GoogleCloudPlatform/cloud-foundation-fabric//modules/dns?ref=v55.3.0"
-  project_id = var.project_id
-  name       = var.apigee_internal_dns_zone.name
-  zone_config = {
-    domain = var.apigee_internal_dns_zone.domain
-    private = {
-      client_networks = []
-    }
-  }
+resource "google_compute_address" "static_address" {
+  name   = "${var.name_prefix}-address"
+  project = var.project_id
+  region = var.region
 }
 
 # PSC Interface — dedicated regular subnet for network attachment
@@ -152,41 +150,52 @@ resource "google_compute_subnetwork" "agent_gateway" {
   ip_cidr_range = var.agent_gateway_subnet_cidr
 }
 
-# Private DNS zone for `run.app.` — overrides every Cloud Run hostname to the
-# Private Service Connect for Google APIs VIP (`private.googleapis.com`,
-# 199.36.153.8). Cloud Run with `ingress = internal-and-cloud-load-balancing`
-# treats PSC-sourced traffic as internal, so the agent can reach Cloud Run MCP
-# servers using their literal `*.run.app` URLs without opening the services to
-# the public internet. The zone must be paired with `run.app.` in
-# `agent_gateway_dns_peering_config.domains` so the Agent Gateway resolves the
-# override on the egress path.
-module "run_app_private_zone" {
-  count      = var.enable_run_app_psc ? 1 : 0
-  source     = "github.com/GoogleCloudPlatform/cloud-foundation-fabric//modules/dns?ref=v55.3.0"
-  project_id = var.project_id
-  name       = "run-app-internal"
-  zone_config = {
-    domain = "run.app."
-    private = {
-      client_networks = [module.vpc.self_link]
-    }
+locals {
+  registry_uri = "//agentregistry.googleapis.com/projects/${var.project_id}/locations/${var.region}"
+}
+
+# PSC-Interface network attachment in the dedicated co-location subnet. This is
+# what the Agent Gateway egresses through to reach the customer VPC (and from
+# there the MCP internal LB).
+resource "google_compute_network_attachment" "agent_gateway_na" {
+  project               = var.project_id
+  name                  = "${var.name_prefix}-na"
+  region                = var.region
+  connection_preference = "ACCEPT_AUTOMATIC"
+  subnetworks           = [google_compute_subnetwork.agent_gateway[0].self_link]
+}
+
+# Allow the gateway tenant's PSC-I NIC (sourcing from the dedicated subnet) to
+# reach the MCP internal LB on its front-end port.
+resource "google_compute_firewall" "agent_gateway_psc_i" {
+  project       = var.project_id
+  name          = "${var.name_prefix}-allow-psc-i"
+  network       = module.vpc.self_link
+  direction     = "INGRESS"
+  priority      = 1000
+  source_ranges = [var.agent_gateway_subnet_cidr]
+
+  allow {
+    protocol = "tcp"
+    ports    = [tostring(var.mcp_lb_target_port)]
   }
 }
 
-# Wildcard A records for every Cloud Run URL form. DNS wildcards bind to a
-# single label position, so `*.run.app.` only matches `<thing>.run.app.` —
-# regional URLs like `<service>-<num>.us-central1.run.app.` need their own
-# `*.us-central1.run.app.` record. `*.a.run.app.` covers the legacy
-# `<service>-<hash>-<region-short>.a.run.app` format.
-resource "google_dns_record_set" "run_app_wildcards" {
-  for_each = var.enable_run_app_psc ? toset(concat(
-    ["*.run.app."],
-    [for r in var.run_app_psc_regions : "*.${r}.run.app."]
-  )) : []
-  project      = var.project_id
-  managed_zone = module.run_app_private_zone[0].name
-  name         = each.value
-  type         = "A"
-  ttl          = 300
-  rrdatas      = ["199.36.153.8"]
+# The Agent Gateway itself. Google-managed, AGENT_TO_ANYWHERE.
+resource "google_network_services_agent_gateway" "this" {
+  project  = var.project_id
+  name     = var.name_prefix
+  location = var.region
+
+  google_managed {
+    governed_access_path = "AGENT_TO_ANYWHERE"
+  }
+
+  registries = [local.registry_uri]
+
+  network_config {
+    egress {
+      network_attachment = google_compute_network_attachment.agent_gateway_na.id
+    }
+  }
 }

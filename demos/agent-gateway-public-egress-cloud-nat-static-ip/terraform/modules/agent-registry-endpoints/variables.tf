@@ -69,19 +69,13 @@ variable "mcp_servers" {
 }
 
 variable "mcp_url_mode" {
-  description = "URL strategy for MCP server registration. 'internal_lb' registers https://<key>.<mcp_internal_dns_domain> (the canonical private hostname fronted by the MCP internal LB). 'cloud_run' registers the *.run.app URL from mcp_service_urls."
+  description = "URL strategy for MCP server registration. 'cloud_run' registers the *.run.app URL from mcp_service_urls."
   type        = string
   default     = "internal_lb"
   validation {
-    condition     = contains(["internal_lb", "cloud_run"], var.mcp_url_mode)
-    error_message = "mcp_url_mode must be 'internal_lb' or 'cloud_run'."
+    condition     = contains(["cloud_run"], var.mcp_url_mode)
+    error_message = "mcp_url_mode must be 'cloud_run'."
   }
-}
-
-variable "mcp_internal_dns_domain" {
-  description = "Internal DNS domain for MCP services (e.g. 'mcp-server.internal.' or 'mcp-server.internal'). Trailing dot is stripped before constructing URLs. Required when mcp_url_mode = 'internal_lb'."
-  type        = string
-  default     = null
 }
 
 variable "mcp_service_urls" {

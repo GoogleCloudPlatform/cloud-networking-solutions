@@ -108,21 +108,6 @@ variable "psc_interface_dns_zone" {
   }
 }
 
-variable "enable_run_app_psc" {
-  description = "Provision a private Cloud DNS zone for `run.app.` (attached to the VPC) that overrides every Cloud Run hostname to the Private Service Connect for Google APIs VIP (`private.googleapis.com`, 199.36.153.8). Lets the agent reach Cloud Run services with `ingress = internal-and-cloud-load-balancing` using their literal `*.run.app` URLs without opening them to the public internet. Pair with adding `run.app.` to `agent_gateway_dns_peering_config.domains` so the Agent Gateway resolves the override."
-  type        = bool
-  default     = false
-}
-
-variable "run_app_psc_regions" {
-  description = "Regional `run.app` subdomains to publish wildcard A records for. Cloud DNS wildcards bind to a single label position, so `*.run.app.` does NOT cover `<service>-<num>.<region>.run.app.` — every region the gateway needs to reach must be enumerated here. Defaults cover us-central1 plus the legacy `*.a.run.app.` form."
-  type        = list(string)
-  default = [
-    "us-central1",
-    "a", # legacy <service>-<hash>-<region-short>.a.run.app form
-  ]
-}
-
 variable "enable_agent_gateway" {
   description = "Provision the dedicated subnet that hosts the Agent Gateway PSC-Interface network attachment and the relocated MCP internal LB VIP."
   type        = bool
@@ -157,4 +142,10 @@ variable "agent_gateway_subnet_cidr" {
     )
     error_message = "agent_gateway_subnet_cidr must not overlap 10.0.0.0/24, 10.0.1.0/24, or 10.0.2.0/24 — Agent Gateway cannot egress to those ranges."
   }
+}
+
+variable "mcp_lb_target_port" {
+  description = "TCP port on the MCP internal LB that the Agent Gateway PSC-I needs to reach"
+  type        = number
+  default     = 443
 }

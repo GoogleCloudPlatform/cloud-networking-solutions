@@ -105,76 +105,8 @@ variable "gateway_scope" {
 }
 
 # ==============================================================================
-# DNS CONFIGURATION
-# ==============================================================================
-
-variable "dns_zone_domain" {
-  description = "The domain name for the public DNS zone (must end with a dot, e.g., 'example.com.'). Only used when `enable_cloud_run_private_networking = true` (Certificate Manager validates the MCP LB cert against this zone)."
-  type        = string
-  default     = null
-}
-
-variable "dns_zone_name" {
-  description = "The name of the existing Cloud DNS managed zone. If not provided, derived from dns_zone_domain."
-  type        = string
-  default     = null
-}
-
-variable "enable_certificate_manager" {
-  description = "Enable Certificate Manager to create managed certificates for the DNS domain. Only takes effect when `enable_cloud_run_private_networking = true` (the cert is only needed by the MCP internal Application LB, which the master flag also gates)."
-  type        = bool
-  default     = false
-}
-
-# ==============================================================================
-# CLOUD RUN PRIVATE NETWORKING — master switch for the secure MCP path
-# ==============================================================================
-
-variable "enable_cloud_run_private_networking" {
-  description = "Master switch for the secure MCP networking path. When true, MCP Cloud Run services run with `ingress = INGRESS_TRAFFIC_INTERNAL_LOAD_BALANCER` behind a Google-managed internal Application LB at `<service>.<mcp_internal_dns_zone.domain>`, and the Agent Registry registers each MCP service at the LB-fronted URL. The internal LB, MCP private DNS zone, public DNS zone, Certificate Manager cert (when `enable_certificate_manager = true`), and Agent Gateway peering for `mcp.<domain>.` are all gated on this flag. When false (default), Cloud Run runs with `ingress = INGRESS_TRAFFIC_ALL`, the registry uses the literal `*.run.app` URLs, and none of the above private-network infra is created — the simplest path for new users who don't own a DNS zone."
-  type        = bool
-  default     = false
-}
-
-# ==============================================================================
 # MCP SERVICES (CLOUD RUN) CONFIGURATION
 # ==============================================================================
-
-variable "mcp_internal_dns_zone" {
-  description = <<-EOT
-    Private DNS zone hosting <service>.<domain> A records for the MCP Cloud Run
-    services. Attached to the VPC so workloads (and Agent Engine via DNS
-    peering) resolve internally.
-
-    Only used when `enable_cloud_run_private_networking = true` (the zone
-    fronts the MCP internal Application LB, which the master flag also gates).
-    Required when the master flag is true; ignored otherwise.
-
-    `domain` MUST be a real subdomain (typically "mcp.<dns_zone_domain>") so
-    Certificate Manager can issue a Google-managed regional cert that the
-    Agent Gateway will validate. Agent Gateway does NOT currently accept the
-    self-signed cert that the LB falls back to when the domain is unrouteable
-    (e.g. the legacy "mcp-server.internal."). The self-signed / mcp-server.internal
-    code path is retained for future use once Agent Gateway gains self-signed
-    cert support.
-  EOT
-  type = object({
-    name   = optional(string, "mcp-server-internal")
-    domain = string
-  })
-  # null on the simple path (`enable_cloud_run_private_networking = false`); the
-  # cross-variable validation below promotes it to required when the master flag
-  # flips on. Every consumer in main.tf/outputs.tf already guards for null.
-  default = null
-  validation {
-    condition     = var.mcp_internal_dns_zone == null || endswith(var.mcp_internal_dns_zone.domain, ".")
-    error_message = "mcp_internal_dns_zone.domain must end with a trailing dot (e.g. \"mcp.example.com.\")."
-  }
-  validation {
-    condition     = !var.enable_cloud_run_private_networking || var.mcp_internal_dns_zone != null
-    error_message = "mcp_internal_dns_zone is required when enable_cloud_run_private_networking = true (it supplies the per-service domain fronting the MCP internal Application LB). Set it in your tfvars (typically mcp_internal_dns_zone = { domain = \"mcp.<dns_zone_domain>\" }), or leave enable_cloud_run_private_networking = false to use the *.run.app simple path."
-  }
-}
 
 variable "mcp_services" {
   description = "Map of MCP service name to deployment configuration. The map key becomes the Cloud Run service name AND the URL-mask token (e.g. legacy-dms.<mcp_internal_dns_zone.domain> -> Cloud Run service 'legacy-dms')."
@@ -394,21 +326,6 @@ variable "psc_interface_dns_zone" {
   }
 }
 
-variable "enable_run_app_psc" {
-  description = "Provision a private Cloud DNS zone for `run.app.` (attached to the VPC) that overrides every Cloud Run hostname to the Private Service Connect for Google APIs VIP (`private.googleapis.com`, 199.36.153.8). Lets the agent reach Cloud Run services with `ingress = internal-and-cloud-load-balancing` using their literal `*.run.app` URLs without opening them to the public internet. Pair with adding `run.app.` to `agent_gateway_dns_peering_config.domains` so the Agent Gateway resolves the override."
-  type        = bool
-  default     = false
-}
-
-variable "run_app_psc_regions" {
-  description = "Regional `run.app` subdomains to publish wildcard A records for when `enable_run_app_psc = true`. Cloud DNS wildcards bind to a single label position, so `*.run.app.` does NOT cover `<service>-<num>.<region>.run.app.` — every region the gateway needs to reach must be enumerated here."
-  type        = list(string)
-  default = [
-    "us-central1",
-    "a",
-  ]
-}
-
 # ==============================================================================
 # AGENT GATEWAY CONFIGURATION
 # ==============================================================================
@@ -429,33 +346,6 @@ variable "agent_gateway_subnet_cidr" {
   description = "CIDR for the Agent Gateway dedicated subnet. Min /28, RFC1918, must not overlap 10.0.0.0/24, 10.0.1.0/24, or 10.0.2.0/24 (Agent Gateway egress restrictions)."
   type        = string
   default     = "10.20.0.0/28"
-}
-
-variable "agent_gateway_authz_fail_open" {
-  description = "If true, allow traffic through the Agent Gateway when an authz extension call fails. Set false in production."
-  type        = bool
-  default     = true
-}
-
-variable "agent_gateway_iap_iam_enforcement_mode" {
-  description = "Set to \"DRY_RUN\" to put the Agent Gateway IAP authz extension into dry-run mode (IAM allow policies evaluated and logged but not blocking). Leave null (the default) to omit the metadata key, which matches the IAP default of enforcing."
-  type        = string
-  default     = null
-  validation {
-    condition     = var.agent_gateway_iap_iam_enforcement_mode == null || var.agent_gateway_iap_iam_enforcement_mode == "DRY_RUN"
-    error_message = "agent_gateway_iap_iam_enforcement_mode must be null or \"DRY_RUN\"."
-  }
-}
-
-variable "agent_gateway_dns_peering_config" {
-  description = "Optional DNS peering for the Agent Gateway. Lets the gateway resolve the listed `domains` (each must end with a dot) against the target VPC's private Cloud DNS zones — required for the gateway to reach upstream MCP servers by hostname (e.g. `mcp.agent-gateway.sc-ccn.xyz.` records that point at the MCP internal LB). `target_project` defaults to `var.project_id` and `target_network` defaults to the self-link of the VPC this module creates; override only when peering against a VPC in a different project or network. Applied natively via `network_config.dns_peering_config` on the Agent Gateway resource."
-  type = object({
-    domains        = list(string)
-    target_project = optional(string)
-    target_network = optional(string)
-  })
-  default  = null
-  nullable = true
 }
 
 # ==============================================================================

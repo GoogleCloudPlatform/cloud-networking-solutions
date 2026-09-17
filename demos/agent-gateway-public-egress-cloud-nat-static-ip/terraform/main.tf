@@ -69,12 +69,6 @@ module "networking" {
   enable_psc_interface      = var.enable_psc_interface
   psc_interface_subnet_cidr = var.psc_interface_subnet_cidr
 
-  # Private DNS zone for `run.app.` that resolves every Cloud Run URL to the
-  # PSC for Google APIs VIP, so Cloud Run services with internal-only ingress
-  # are reachable from the gateway without opening them to the public internet.
-  enable_run_app_psc  = var.enable_run_app_psc
-  run_app_psc_regions = var.run_app_psc_regions
-
   # Agent Gateway dedicated subnet (hosts both the new PSC-I network attachment
   # and the relocated MCP internal LB VIP when enable_agent_gateway = true).
   enable_agent_gateway      = var.enable_agent_gateway
@@ -198,100 +192,18 @@ module "agent_engine" {
 }
 
 # Phase 12: MCP Cloud Run services + per-service runtime SAs
-# `private_networking = false` (the default) leaves Cloud Run with
-# `INGRESS_TRAFFIC_ALL` so callers can hit the *.run.app URL directly. Set the
-# master flag to true to restrict ingress to the internal LB.
 module "mcp_services" {
   source = "./modules/mcp-cloud-run"
 
   project_id              = var.project_id
   region                  = var.region
   services                = var.mcp_services
-  mcp_internal_dns_domain = local.mcp_internal_dns_domain_or_null
   # Restricts roles/run.invoker to the agent-mcp-invoker SA. Null when
   # agent_engine is disabled, in which case mcp-cloud-run skips the binding
   # and Cloud Run is unreachable until invoker is granted out-of-band.
   invoker_sa_email = var.enable_agent_engine ? module.agent_engine[0].agent_mcp_invoker_email : null
 
   depends_on = [module.foundation, google_artifact_registry_repository.registry]
-}
-
-# Agent Gateway can't validate the self-signed cert the MCP LB falls back to
-# when mcp_internal_dns_zone.domain isn't a real, Certificate-Manager-issuable
-# subdomain. Catch the misconfiguration at plan time rather than during the
-# first agent → MCP HTTPS call.
-#
-# Only enforced when the master flag is on — otherwise there's no LB and no
-# cert to validate; the agent reaches Cloud Run via the *.run.app URL directly.
-check "agent_gateway_mcp_cert_prereqs" {
-  assert {
-    condition     = !var.enable_agent_gateway || var.enable_certificate_manager
-    error_message = "enable_agent_gateway = true requires enable_certificate_manager = true so the MCP internal LB serves a Google-managed cert (Agent Gateway does not currently validate self-signed certs)."
-  }
-  assert {
-    condition = !var.enable_agent_gateway || (
-      var.mcp_internal_dns_zone != null &&
-      var.dns_zone_domain != null &&
-      endswith(
-        trimsuffix(var.mcp_internal_dns_zone.domain, "."),
-        ".${trimsuffix(var.dns_zone_domain, ".")}"
-      )
-    )
-    error_message = "enable_agent_gateway = true requires mcp_internal_dns_zone.domain to be a subdomain of dns_zone_domain (e.g. dns_zone_domain = \"agw.example.com.\" + mcp_internal_dns_zone.domain = \"mcp.agw.example.com.\") so Certificate Manager can issue the cert."
-  }
-}
-
-# Phase 13: Agent Gateway — governance plane fronting the MCP services.
-# Provisions the gateway in AGENT_TO_ANYWHERE mode with PSC-I egress and IAP
-# and Model Armor authz extensions. Per-MCP-server `roles/iap.egressor`
-# bindings are issued out-of-band by `scripts/grant_agent_mcp_egress.sh`.
-module "agent_gateway" {
-  count  = var.enable_agent_gateway ? 1 : 0
-  source = "./modules/agent-gateway"
-
-  providers = {
-    google      = google
-    google-beta = google-beta
-  }
-
-  project_id = var.project_id
-  region     = var.region
-
-  name                           = var.agent_gateway_name
-  network_self_link              = module.networking.network_self_link
-  agent_gateway_subnet_self_link = module.networking.agent_gateway_subnet_self_link
-  agent_gateway_subnet_cidr      = var.agent_gateway_subnet_cidr
-
-  mcp_lb_target_port = var.mcp_lb_protocol == "HTTPS" ? 443 : 80
-
-  enable_model_armor               = var.enable_model_armor
-  model_armor_request_template_id  = var.enable_model_armor ? module.model_armor[0].request_template_id : null
-  model_armor_response_template_id = var.enable_model_armor ? module.model_armor[0].response_template_id : null
-
-  # Scope the Model Armor CONTENT_AUTHZ policy to the per-MCP-service Host
-  # values: when private networking is on, that's `<svc>.<mcp domain>` (the
-  # internal LB hostname). When private networking is off, the agent reaches
-  # Cloud Run via *.run.app, so flatten over every URL form Cloud Run exposes
-  # for each service (both the hash form `<svc>-<hash>-<region>.a.run.app`
-  # AND the project-number form `<svc>-<project-number>.<region>.run.app`) —
-  # an agent may legitimately call either, and Model Armor host matching is
-  # exact-string. The trailing dot on the private zone domain is stripped so
-  # the value matches what HTTP clients actually send in the Host header.
-  model_armor_authz_hosts = var.enable_model_armor ? (
-    flatten([for svc in keys(var.mcp_services) :
-      [for u in module.mcp_services.service_url_list[svc] :
-    replace(replace(u, "https://", ""), "/", "")]])
-  ) : []
-
-  authz_extension_fail_open = var.agent_gateway_authz_fail_open
-  iap_iam_enforcement_mode  = var.agent_gateway_iap_iam_enforcement_mode
-
-  # Auto-merge the MCP private zone with any user-supplied domains (e.g.
-  # `run.app.`). Computed in main.tf locals so the user only declares the
-  # extras they need.
-  dns_peering_config = local.agent_gateway_dns_peering_config_effective
-
-  depends_on = [module.foundation, module.networking, module.mcp_internal_lb]
 }
 
 # Discovery Engine Admin — Allow user to manage Gemini Enterprise / Discovery Engine
@@ -332,8 +244,7 @@ module "agent_registry_endpoints" {
   # URL mode `cloud_run` registers
   # the literal *.run.app URL from module.mcp_services.service_urls.
   mcp_url_mode            = "cloud_run"
-  mcp_internal_dns_domain = local.mcp_internal_dns_domain_or_null
   mcp_service_urls        = module.mcp_services.service_urls
 
-  depends_on = [module.foundation, module.mcp_services, module.mcp_internal_lb]
+  depends_on = [module.foundation, module.mcp_services]
 }

@@ -93,35 +93,6 @@ output "agent_mcp_invoker_email" {
   value       = var.enable_agent_engine ? module.agent_engine[0].agent_mcp_invoker_email : null
 }
 
-output "mcp_internal_dns_names" {
-  description = "Map of MCP service key to its private DNS name (<service>.<domain>). Null when enable_cloud_run_private_networking = false (no MCP private zone is provisioned)."
-  value = (
-    var.enable_cloud_run_private_networking && var.mcp_internal_dns_zone != null
-    ? { for k, _ in var.mcp_services : k => trimsuffix("${k}.${var.mcp_internal_dns_zone.domain}", ".") }
-    : null
-  )
-}
-
-output "mcp_internal_lb_ip" {
-  description = "Internal IP address of the MCP services Application LB. Null when enable_cloud_run_private_networking = false."
-  value       = var.enable_cloud_run_private_networking ? module.mcp_internal_lb[0].ip_address : null
-}
-
-output "mcp_internal_dns_zone_name" {
-  description = "Cloud DNS managed zone name for the MCP servers private DNS"
-  value       = module.networking.mcp_internal_dns_zone_name
-}
-
-output "mcp_internal_dns_domain" {
-  description = "Domain name (with trailing dot) of the MCP servers private DNS zone"
-  value       = module.networking.mcp_internal_dns_domain
-}
-
-output "mcp_cloud_run_ingress_annotation" {
-  description = "Cloud Run v1 ingress annotation value to use when rendering cloudrun/*.yaml.tmpl. Mirrors the ingress chosen by the mcp-cloud-run module based on enable_cloud_run_private_networking, so skaffold-rendered manifests stay in sync with terraform state."
-  value       = var.enable_cloud_run_private_networking ? "internal-and-cloud-load-balancing" : "all"
-}
-
 # Artifact Registry Outputs
 
 output "artifact_registry_id" {
@@ -132,13 +103,6 @@ output "artifact_registry_id" {
 output "artifact_registry_url" {
   description = "The Artifact Registry repository URL for docker push/pull"
   value       = "${var.region}-docker.pkg.dev/${var.project_id}/${google_artifact_registry_repository.registry.repository_id}"
-}
-
-# Certificate Outputs
-
-output "regional_certificate_name" {
-  description = "Name of the regional Google-managed certificate. Null unless both enable_cloud_run_private_networking and enable_certificate_manager are true."
-  value       = var.enable_cloud_run_private_networking && var.enable_certificate_manager ? module.certificates[0].regional_certificate_name : null
 }
 
 # Model Armor Outputs
@@ -205,47 +169,16 @@ output "psc_interface_network_attachment_name" {
   value       = var.enable_psc_interface ? module.networking.psc_interface_network_attachment_name : null
 }
 
-output "psc_interface_dns_zone_name" {
-  description = "DNS zone name for PSC Interface DNS peering"
-  value       = var.enable_psc_interface ? module.networking.psc_interface_dns_zone_name : null
-}
-
-output "psc_interface_dns_domain" {
-  description = "Domain name for PSC Interface DNS peering (ends with a dot)"
-  value       = var.enable_psc_interface ? module.networking.psc_interface_dns_domain : null
-}
-
-output "psc_interface_dns_peering_domain" {
-  description = "DNS domain for PSC Interface DNS peering (pass to deploy_agent.py --dns-peering-domain)"
-  value       = var.enable_psc_interface && var.psc_interface_dns_zone != null ? var.psc_interface_dns_zone.domain : null
-}
-
 # Agent Gateway Outputs
 
 output "agent_gateway_id" {
   description = "Full resource ID of the Agent Gateway"
-  value       = var.enable_agent_gateway ? module.agent_gateway[0].agent_gateway_id : null
-}
-
-output "agent_gateway_mtls_endpoint" {
-  description = "mTLS endpoint clients use to reach the Agent Gateway"
-  value       = var.enable_agent_gateway ? module.agent_gateway[0].mtls_endpoint : null
-}
-
-output "agent_gateway_root_certificates" {
-  description = "Root certificates clients use to validate the Agent Gateway mTLS endpoint"
-  value       = var.enable_agent_gateway ? module.agent_gateway[0].root_certificates : null
-  sensitive   = true
-}
-
-output "agent_gateway_service_extensions_service_account" {
-  description = "Service account the Agent Gateway uses to call out to authz extensions"
-  value       = var.enable_agent_gateway ? module.agent_gateway[0].service_extensions_service_account : null
+  value       = var.enable_agent_gateway ? module.networking.agent_gateway_id : null
 }
 
 output "agent_gateway_registry_uri" {
   description = "URI of the project-local agent registry the gateway is bound to"
-  value       = var.enable_agent_gateway ? module.agent_gateway[0].registry_uri : null
+  value       = var.enable_agent_gateway ? module.networking.registry_uri : null
 }
 
 output "agent_gateway_subnet_self_link" {

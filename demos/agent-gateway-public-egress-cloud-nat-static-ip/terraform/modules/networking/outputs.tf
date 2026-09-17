@@ -94,21 +94,6 @@ output "psc_subnet_self_link" {
   value       = try(values(module.vpc.subnets_psc)[0].self_link, null)
 }
 
-output "apigee_internal_dns_zone_name" {
-  description = "Name of the Apigee internal DNS zone"
-  value       = var.apigee_internal_dns_zone != null ? module.apigee_internal_dns_zone[0].name : null
-}
-
-output "mcp_internal_dns_zone_name" {
-  description = "Name of the MCP servers internal DNS zone"
-  value       = var.mcp_internal_dns_zone != null ? module.mcp_internal_dns_zone[0].name : null
-}
-
-output "mcp_internal_dns_domain" {
-  description = "Domain of the MCP servers internal DNS zone (ends with a dot)"
-  value       = var.mcp_internal_dns_zone != null ? var.mcp_internal_dns_zone.domain : null
-}
-
 # PSC Interface Outputs
 
 output "psc_interface_network_attachment_id" {
@@ -126,26 +111,6 @@ output "psc_interface_subnet_self_link" {
   value       = var.enable_psc_interface ? google_compute_subnetwork.psc_interface[0].self_link : null
 }
 
-output "psc_interface_dns_zone_name" {
-  description = "Name of the PSC Interface private DNS zone"
-  value       = var.enable_psc_interface && var.psc_interface_dns_zone != null ? (var.mcp_internal_dns_zone != null && var.psc_interface_dns_zone.name == var.mcp_internal_dns_zone.name ? module.mcp_internal_dns_zone[0].name : module.psc_interface_dns_zone[0].name) : null
-}
-
-output "psc_interface_dns_domain" {
-  description = "Domain name for PSC Interface DNS peering (ends with a dot)"
-  value       = var.enable_psc_interface && var.psc_interface_dns_zone != null ? var.psc_interface_dns_zone.domain : null
-}
-
-output "run_app_private_zone_name" {
-  description = "Name of the private Cloud DNS zone for `run.app.` (null when enable_run_app_psc = false)."
-  value       = var.enable_run_app_psc ? module.run_app_private_zone[0].name : null
-}
-
-output "run_app_private_zone_domain" {
-  description = "Literal `run.app.` domain when enable_run_app_psc = true, else null. Append this to `agent_gateway_dns_peering_config.domains` so the Agent Gateway resolves the override."
-  value       = var.enable_run_app_psc ? "run.app." : null
-}
-
 # Agent Gateway dedicated subnet outputs
 
 output "agent_gateway_subnet_id" {
@@ -161,4 +126,19 @@ output "agent_gateway_subnet_self_link" {
 output "agent_gateway_subnet_cidr" {
   description = "CIDR range of the Agent Gateway dedicated subnet"
   value       = var.enable_agent_gateway ? google_compute_subnetwork.agent_gateway[0].ip_cidr_range : null
+}
+
+output "agent_gateway_id" {
+  description = "Full resource ID of the Agent Gateway"
+  value       = google_network_services_agent_gateway.this.id
+}
+
+output "agent_gateway_name" {
+  description = "Short name of the Agent Gateway"
+  value       = google_network_services_agent_gateway.this.name
+}
+
+output "registry_uri" {
+  description = "URI of the project-local agent registry the gateway is bound to"
+  value       = local.registry_uri
 }

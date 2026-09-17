@@ -26,9 +26,6 @@ organization_id = "123456789012"
 # Members granted demo-wide roles
 platform_admin_members = ["user:admin@example.com"]
 
-# IAP Enforcement Mode ("DRY_RUN" or null)
-agent_gateway_iap_iam_enforcement_mode = "DRY_RUN"
-
 
 # ##############################################################################
 # # OPTIONAL — everything below this line has a default and is pre-tuned for   #
@@ -133,42 +130,6 @@ agent_gateway_name = "agent-gateway"
 # relocated MCP internal LB VIP. Min /28, RFC1918, must NOT overlap
 # 10.0.0.0/24, 10.0.1.0/24, or 10.0.2.0/24 (Agent Gateway egress restrictions).
 agent_gateway_subnet_cidr = "10.20.0.0/28"
-
-# When true, allow traffic through the Agent Gateway if an authz extension
-# fails. Set false in production to fail-closed.
-agent_gateway_authz_fail_open = true
-
-# DNS peering: lets the gateway resolve customer-VPC private DNS zones so it
-# can reach upstream MCP servers by hostname. The `mcp.<domain>.` entry for
-# the internal LB hostnames is auto-prepended when
-# `enable_cloud_run_private_networking = true`, so this list only needs any
-# extra domains. Each domain MUST end with a trailing dot. Set the whole var
-# to null to skip entirely.
-#
-# `target_project` defaults to var.project_id and `target_network` defaults
-# to the VPC this module creates — only set them to peer against a different
-# project/network.
-agent_gateway_dns_peering_config = {
-  domains = [
-    # "run.app.",   # uncomment when enable_run_app_psc = true
-  ]
-}
-
-# Provision a private DNS zone for `run.app.` (attached to the gateway VPC)
-# that overrides every Cloud Run hostname to the Private Service Connect for
-# Google APIs VIP (`private.googleapis.com`, 199.36.153.8). Lets the agent
-# reach Cloud Run MCP servers using their literal `*.run.app` URLs while
-# Cloud Run keeps `ingress = internal-and-cloud-load-balancing`. Pair with
-# adding `run.app.` to `agent_gateway_dns_peering_config.domains` above.
-enable_run_app_psc = false
-
-# Regional `run.app` subdomains to publish wildcard A records for. Cloud DNS
-# wildcards bind to a single label position, so `*.run.app.` does NOT cover
-# `<service>-<num>.<region>.run.app.` — every region the gateway needs to
-# reach must be enumerated here. Defaults cover us-central1 plus the legacy
-# `*.a.run.app.` form.
-# run_app_psc_regions = ["us-central1", "a"]
-
 
 # ==============================================================================
 # AGENT REGISTRY ENDPOINTS
