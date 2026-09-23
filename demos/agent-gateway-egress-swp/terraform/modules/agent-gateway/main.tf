@@ -73,15 +73,15 @@ resource "terraform_data" "network_attachment_drain" {
     when    = destroy
     command = <<-EOT
       echo "Waiting for all PSC endpoints to detach from ${self.input.name} before deleting the Network Attachment..."
-      for i in $(seq 1 30); do
+      for i in $(seq 1 45); do
         endpoints=$(gcloud compute network-attachments describe "${self.input.name}" \
           --project "${self.input.project}" --region "${self.input.region}" \
-          --format='value(connectedEndpoints[].pscConnectionId)' 2>/dev/null || echo "error")
+          --format='value(connectionEndpoints)' 2>/dev/null || echo "error")
         if [ "$endpoints" != "error" ] && [ -z "$endpoints" ]; then
           echo "All PSC endpoints have detached successfully. Proceeding with Network Attachment deletion."
           exit 0
         fi
-        echo "PSC endpoints still attached (attempt $i/30). Waiting 10s..."
+        echo "PSC endpoints still attached (attempt $i/45). Waiting 10s..."
         sleep 10
       done
       echo "Timeout waiting for PSC endpoints to detach; attempting delete anyway." >&2

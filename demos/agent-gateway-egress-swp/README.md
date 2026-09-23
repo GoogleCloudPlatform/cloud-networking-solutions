@@ -401,17 +401,34 @@ terraform destroy -var deploy_reasoning_engine=true
 
 ### Network Attachment with connected endpoints cannot be deleted (manual fallback)
 
-If `terraform destroy` is interrupted midway (e.g., via `CTRL+C`) before the automated teardown provisioners can execute, the `AgentConnectivityTemplate` may remain bound to the Agent Gateway.
+The error `Error 412: Network Attachment with connected endpoints cannot be deleted` occurs if Compute Engine attempts to delete the Network Attachment while Google's internal service project is still asynchronously disconnecting its PSC connection (which takes ~1 to 3 minutes after the Agent Gateway is deleted).
 
-To unblock the teardown manually, run the unbind and delete scripts from the root directory before retrying `terraform destroy`:
+The automated drain gate in `terraform_data.network_attachment_drain` handles this wait automatically. However, if a previous `terraform destroy` was interrupted midway via `CTRL+C`:
 
 ```bash
 export PROJECT_ID=$(gcloud config get-value project)
 export REGION=us-central1
-export AGENT_GATEWAY_NAME=$(cd terraform && terraform output -raw agent_gateway_id | awk -F/ '{print $NF}')
 
-./scripts/unbind_connectivity_template.sh "${PROJECT_ID}" "${REGION}" "${AGENT_GATEWAY_NAME}"
-./scripts/delete_connectivity_template.sh "${PROJECT_ID}" "${REGION}" "cuj2-template"
+# 1. Delete the Agent Gateway if it still exists
+gcloud alpha network-services agent-gateways delete agent-gateway \
+  --location="${REGION}" --project="${PROJECT_ID}" --quiet || true
+
+# 2. Delete the Connectivity Template if it still exists
+./scripts/delete_connectivity_template.sh "${PROJECT_ID}" "${REGION}" "cuj2-template" || true
+
+# 3. Wait for the tenant PSC endpoint to detach, then delete the Network Attachment
+echo "Waiting for PSC endpoints to release from agent-gateway-na..."
+while [ -n "$(gcloud compute network-attachments describe agent-gateway-na --region="${REGION}" --project="${PROJECT_ID}" --format='value(connectionEndpoints)' 2>/dev/null)" ]; do
+  echo "Endpoints still attached. Waiting 10s..."
+  sleep 10
+done
+echo "Endpoints released! Deleting Network Attachment..."
+gcloud compute network-attachments delete agent-gateway-na \
+  --region="${REGION}" --project="${PROJECT_ID}" --quiet || true
+
+# 4. Resume Terraform destroy to clean up remaining resources
+cd terraform
+terraform destroy -var deploy_reasoning_engine=true
 ```
 
 ---
