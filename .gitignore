@@ -19,6 +19,9 @@ backend.conf
 bin/
 vendor/
 
+# Python
+__pycache__/
+
 # OS files
 .DS_Store
 Thumbs.db
@@ -34,6 +37,7 @@ Thumbs.db
 # Environment / secrets
 .env
 .env.*
+!.env.example
 .envrc
 
 # Pre-commit
@@ -44,3 +48,9 @@ Thumbs.db
 
 # JJ workspaces
 .workspaces/
+
+# Others
+notes/
+.agents/
+!demos/**/.agents/
+skills-lock.json
