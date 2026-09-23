@@ -141,12 +141,48 @@ EOF
         --source="config/my-agent-gateway-vpc-egress.yaml" \
         --location="${self.input.region}" \
         --project="${self.input.project_id}"
+
+      echo "Creating allow-all AuthzPolicy YAML config..."
+      cat <<EOF > config/agent-gateway-authz-policy.yaml
+name: projects/${self.input.project_id}/locations/${self.input.region}/authzPolicies/${self.input.agent_gateway_name}-allow-all
+action: ALLOW
+policyProfile: REQUEST_AUTHZ
+target:
+  resources:
+  - projects/${self.input.project_number}/locations/${self.input.region}/agentGateways/${self.input.agent_gateway_name}
+httpRules:
+- when: 'true'
+EOF
+
+      echo "Importing allow-all AuthzPolicy via gcloud..."
+      gcloud network-security authz-policies import "${self.input.agent_gateway_name}-allow-all" \
+        --source="config/agent-gateway-authz-policy.yaml" \
+        --location="${self.input.region}" \
+        --project="${self.input.project_id}"
     EOT
   }
 
   provisioner "local-exec" {
     when    = destroy
     command = <<-EOT
+      echo "Deleting AuthzPolicy..."
+      gcloud network-security authz-policies delete "${self.input.agent_gateway_name}-allow-all" \
+        --location="${self.input.region}" \
+        --project="${self.input.project_id}" \
+        --quiet || true
+
+      echo "Resetting agent-gateway-authz-policy.yaml to placeholder template..."
+      cat <<EOF > config/agent-gateway-authz-policy.yaml
+name: projects/PROJECT_ID/locations/REGION/authzPolicies/agent-gateway-allow-all
+action: ALLOW
+policyProfile: REQUEST_AUTHZ
+target:
+  resources:
+  - projects/PROJECT_NUMBER/locations/REGION/agentGateways/agent-gateway
+httpRules:
+- when: 'true'
+EOF
+
       echo "Deleting Agent Gateway..."
       gcloud alpha network-services agent-gateways delete "${self.input.agent_gateway_name}" \
         --location="${self.input.region}" \
@@ -177,32 +213,9 @@ EOF
   ]
 }
 
-# Allow the Agent Gateway control plane to stabilize before dependent resources
+# Allow the Agent Gateway and AuthzPolicy to stabilize before dependent resources
 # reference the gateway ID (e.g. the reasoning engine's agent_gateway_config).
 resource "time_sleep" "wait_for_gateway" {
   depends_on      = [terraform_data.agent_gateway]
   create_duration = "30s"
-}
-
-# Attach an allow-all AuthzPolicy to the Agent Gateway. This overrides the
-# gateway's internal default-deny behavior and permits all traffic to flow through
-# the PSC-I Network Attachment into the customer VPC, where the customer's SWP
-# and Cloud NAT enforce L7 governance.
-resource "google_network_security_authz_policy" "allow_all" {
-  provider       = google-beta
-  project        = var.project_id
-  name           = "${var.name}-allow-all"
-  location       = var.region
-  policy_profile = "REQUEST_AUTHZ"
-  action         = "ALLOW"
-
-  target {
-    resources = ["projects/${var.project_number}/locations/${var.region}/agentGateways/${var.name}"]
-  }
-
-  http_rules {
-    when = "true"
-  }
-
-  depends_on = [time_sleep.wait_for_gateway]
 }
