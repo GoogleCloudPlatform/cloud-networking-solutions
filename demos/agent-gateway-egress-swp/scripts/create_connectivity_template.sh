@@ -35,11 +35,7 @@ RESPONSE=$(curl -s -w "\n%{http_code}" -X POST \
     \"deploymentModel\": \"CENTRALIZED\",
     \"egressNetworkConfig\": {
       \"networkAttachment\": \"${NETWORK_ATTACHMENT_URI}\",
-      \"vpcEgress\": \"ALL_TRAFFIC\",
-      \"dnsPeeringConfig\": {
-        \"domain\": \"googleapis.com.\",
-        \"targetNetwork\": \"${TARGET_VPC_NETWORK_URI}\"
-      }
+      \"vpcEgress\": \"ALL_TRAFFIC\"
     }
   }")
 
@@ -55,11 +51,7 @@ if [ "$HTTP_CODE" = "409" ]; then
     -d "{
       \"egressNetworkConfig\": {
         \"networkAttachment\": \"${NETWORK_ATTACHMENT_URI}\",
-        \"vpcEgress\": \"ALL_TRAFFIC\",
-        \"dnsPeeringConfig\": {
-          \"domain\": \"googleapis.com.\",
-          \"targetNetwork\": \"${TARGET_VPC_NETWORK_URI}\"
-        }
+        \"vpcEgress\": \"ALL_TRAFFIC\"
       }
     }" || true
 else

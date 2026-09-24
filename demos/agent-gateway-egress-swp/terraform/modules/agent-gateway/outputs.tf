@@ -14,7 +14,7 @@
 
 output "agent_gateway_id" {
   description = "Full resource ID of the Agent Gateway (pass to the agent-engine module as agent_gateway_id)"
-  value       = google_network_services_agent_gateway.this.id
+  value       = "projects/${var.project_id}/locations/${var.region}/agentGateways/${var.name}"
 }
 
 output "agent_gateway_name" {
@@ -24,12 +24,12 @@ output "agent_gateway_name" {
 
 output "mtls_endpoint" {
   description = "mTLS endpoint clients use to reach the Agent Gateway"
-  value       = try(google_network_services_agent_gateway.this.agent_gateway_card[0].mtls_endpoint, null)
+  value       = null
 }
 
 output "root_certificates" {
   description = "Root certificates for validating the Agent Gateway mTLS endpoint."
-  value       = try(google_network_services_agent_gateway.this.agent_gateway_card[0].root_certificates, null)
+  value       = null
   sensitive   = true
 }
 
