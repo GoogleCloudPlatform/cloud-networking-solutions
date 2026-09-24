@@ -49,9 +49,3 @@ variable "agent_gateway_subnet_cidr" {
   description = "CIDR of the dedicated subnet — used to scope the inbound firewall rule"
   type        = string
 }
-
-variable "template_name" {
-  description = "Name of the Agent Connectivity Template to create and link"
-  type        = string
-  default     = null
-}
