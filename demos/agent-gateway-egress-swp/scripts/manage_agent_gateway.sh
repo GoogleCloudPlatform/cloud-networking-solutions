@@ -62,6 +62,9 @@ if [ "$ACTION" = "create" ]; then
       echo "Agent Gateway ${GATEWAY_NAME} created successfully."
       exit 0
     fi
+    if [ $((i % 4)) -eq 0 ]; then
+      echo "Still creating Agent Gateway (attempt $i/120)..."
+    fi
     sleep 5
   done
 
@@ -77,22 +80,40 @@ elif [ "$ACTION" = "delete" ]; then
 
   echo "Deleting Agent Gateway ${GATEWAY_NAME} in ${LOCATION} via v1 REST API..."
 
-  RESPONSE=$(curl -s -w "\n%{http_code}" -X DELETE \
-    -H "Authorization: Bearer ${TOKEN}" \
-    "https://networkservices.googleapis.com/v1/projects/${PROJECT_ID}/locations/${LOCATION}/agentGateways/${GATEWAY_NAME}")
+  # Retry DELETE loop: when the Reasoning Engine is being destroyed in parallel,
+  # the Gateway API returns HTTP 400 (FAILED_PRECONDITION: already being used)
+  # until Vertex AI finishes unbinding the container. We retry every 5s for up to 2m.
+  SUCCESS=false
+  OP_NAME=""
+  for attempt in $(seq 1 30); do
+    RESPONSE=$(curl -s -w "\n%{http_code}" -X DELETE \
+      -H "Authorization: Bearer ${TOKEN}" \
+      "https://networkservices.googleapis.com/v1/projects/${PROJECT_ID}/locations/${LOCATION}/agentGateways/${GATEWAY_NAME}")
 
-  HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
-  BODY=$(echo "$RESPONSE" | sed '$d')
+    HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
+    BODY=$(echo "$RESPONSE" | sed '$d')
 
-  if [ "$HTTP_CODE" = "404" ]; then
-    echo "Agent Gateway ${GATEWAY_NAME} does not exist. Skipping."
-    exit 0
-  elif [ "$HTTP_CODE" != "200" ]; then
-    echo "Warning: Delete returned HTTP $HTTP_CODE: $BODY"
-    exit 0
+    if [ "$HTTP_CODE" = "404" ]; then
+      echo "Agent Gateway ${GATEWAY_NAME} does not exist or already deleted."
+      exit 0
+    elif [ "$HTTP_CODE" = "200" ]; then
+      OP_NAME=$(echo "$BODY" | jq -r .name 2>/dev/null || true)
+      SUCCESS=true
+      break
+    elif [ "$HTTP_CODE" = "400" ]; then
+      echo "Agent Gateway is still referenced by Reasoning Engine (attempt $attempt/30). Waiting 5s for decoupling..."
+      sleep 5
+    else
+      echo "Warning: Delete returned HTTP $HTTP_CODE: $BODY. Retrying in 5s..."
+      sleep 5
+    fi
+  done
+
+  if [ "$SUCCESS" != "true" ]; then
+    echo "ERROR: Failed to initiate Agent Gateway deletion after multiple attempts." >&2
+    exit 1
   fi
 
-  OP_NAME=$(echo "$BODY" | jq -r .name 2>/dev/null || true)
   if [ -n "$OP_NAME" ] && [ "$OP_NAME" != "null" ]; then
     echo "Waiting for Agent Gateway deletion to complete..."
     for i in $(seq 1 60); do
@@ -101,6 +122,9 @@ elif [ "$ACTION" = "delete" ]; then
       if [ "$DONE" = "true" ]; then
         echo "Agent Gateway deleted successfully."
         exit 0
+      fi
+      if [ $((i % 4)) -eq 0 ]; then
+        echo "Still deleting Agent Gateway (attempt $i/60)..."
       fi
       sleep 5
     done
