@@ -222,7 +222,12 @@ module "agent_gateway" {
   agent_gateway_subnet_self_link = module.networking.agent_gateway_subnet_self_link
   agent_gateway_subnet_cidr      = var.agent_gateway_subnet_cidr
 
-  depends_on = [module.foundation, module.networking, module.secure_web_proxy]
+  depends_on = [
+    module.foundation,
+    module.networking,
+    module.secure_web_proxy,
+    module.agent_registry_endpoints,
+  ]
 }
 
 # Phase 7: Agent Registry Endpoints — registers Google API endpoints and MCP server,

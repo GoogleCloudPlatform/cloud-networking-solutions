@@ -210,6 +210,7 @@ EOF
 
   depends_on = [
     google_compute_network_attachment.agent_gateway,
+    google_compute_firewall.agent_gateway_psc_i,
     terraform_data.network_attachment_drain
   ]
 }
