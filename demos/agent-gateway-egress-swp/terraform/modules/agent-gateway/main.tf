@@ -140,6 +140,7 @@ EOF
   provisioner "local-exec" {
     when    = destroy
     command = <<-EOT
+      cd ..
       echo "Deleting AuthzPolicy..."
       gcloud network-security authz-policies delete "${self.input.agent_gateway_name}-allow-all" \
         --location="${self.input.region}" \
@@ -158,7 +159,6 @@ httpRules:
 - when: 'true'
 EOF
 
-      cd ..
       echo "Deleting Agent Gateway via v1 REST API..."
       ./scripts/manage_agent_gateway.sh delete "${self.input.project_id}" "${self.input.region}" "${self.input.agent_gateway_name}" || true
 
