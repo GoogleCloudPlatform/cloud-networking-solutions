@@ -119,3 +119,27 @@ resource "google_project_iam_member" "aiplatform_re_networkservices_viewer" {
   member     = "serviceAccount:service-${module.project.number}@gcp-sa-aiplatform-re.iam.gserviceaccount.com"
   depends_on = [time_sleep.aiplatform_identity_propagation]
 }
+
+# The Agent Gateway control-plane service agent (gcp-sa-agentgateway) and egress
+# proxy service agent (gcp-sa-dep) require networkUser on the subnet and dns.peer
+# to validate the Network Attachment and DNS peering target in the connectivity template.
+resource "google_project_iam_member" "agentgateway_network_user" {
+  count   = var.enable_psc_interface ? 1 : 0
+  project = module.project.project_id
+  role    = "roles/compute.networkUser"
+  member  = "serviceAccount:service-${module.project.number}@gcp-sa-agentgateway.iam.gserviceaccount.com"
+}
+
+resource "google_project_iam_member" "agentgateway_dns_peer" {
+  count   = var.enable_psc_interface ? 1 : 0
+  project = module.project.project_id
+  role    = "roles/dns.peer"
+  member  = "serviceAccount:service-${module.project.number}@gcp-sa-agentgateway.iam.gserviceaccount.com"
+}
+
+resource "google_project_iam_member" "agentgateway_dep_network_user" {
+  count   = var.enable_psc_interface ? 1 : 0
+  project = module.project.project_id
+  role    = "roles/compute.networkUser"
+  member  = "serviceAccount:service-${module.project.number}@gcp-sa-dep.iam.gserviceaccount.com"
+}
