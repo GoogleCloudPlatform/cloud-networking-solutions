@@ -12,11 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-
-
 output "agent_gateway_id" {
   description = "Full resource ID of the Agent Gateway (pass to the agent-engine module as agent_gateway_id)"
-  value       = "projects/${var.project_id}/locations/${var.region}/agentGateways/${var.name}"
+  value       = google_network_services_agent_gateway.this.id
 }
 
 output "agent_gateway_name" {
@@ -26,12 +24,12 @@ output "agent_gateway_name" {
 
 output "mtls_endpoint" {
   description = "mTLS endpoint clients use to reach the Agent Gateway"
-  value       = null
+  value       = try(google_network_services_agent_gateway.this.agent_gateway_card[0].mtls_endpoint, null)
 }
 
 output "root_certificates" {
   description = "Root certificates for validating the Agent Gateway mTLS endpoint."
-  value       = null
+  value       = try(google_network_services_agent_gateway.this.agent_gateway_card[0].root_certificates, null)
   sensitive   = true
 }
 

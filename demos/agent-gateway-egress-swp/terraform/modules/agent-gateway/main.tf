@@ -12,8 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-
-
 /**
  * Agent Gateway Module (CUJ2 — egress-only variant)
  *
@@ -23,20 +21,12 @@
  * VPC, where policy-based routes steer it through the Secure Web Proxy before
  * exiting via Cloud NAT with the reserved static IP.
  *
- * IAP REQUEST_AUTHZ and Model Armor CONTENT_AUTHZ extensions are intentionally
- * omitted — CUJ2 is scoped to the egress path only. The MCP server is public
- * and unauthenticated (INGRESS_TRAFFIC_ALL Cloud Run), so there is no ingress
- * IAM gate to enforce. See demos/agent-gateway for the ingress-governance demo
- * that adds those extensions.
- *
- * DNS peering is also omitted — the MCP server is at a public *.run.app URL
- * that resolves via standard public DNS. No private zone peering is required.
+ * Managed natively via google_network_services_agent_gateway and
+ * google_network_security_authz_policy, avoiding pre-GA alpha API limits.
  */
 
 locals {
   registry_uri = "//agentregistry.googleapis.com/projects/${var.project_id}/locations/${var.region}"
-  # Extract the short relative resource path "projects/.../global/networks/..." from the full self_link URL
-  network_path = regex("projects/[^/]+/global/networks/[^/]+", var.network_self_link)
 }
 
 # PSC-Interface network attachment in the dedicated Agent Gateway subnet.
@@ -61,7 +51,7 @@ resource "google_compute_network_attachment" "agent_gateway" {
 #
 #   Error 412: Network Attachment with connected endpoints cannot be deleted.
 #
-# This node holds the attachment's delete until connectedEndpoints is empty.
+# This node holds the attachment's delete until connectionEndpoints is empty.
 resource "terraform_data" "network_attachment_drain" {
   input = {
     project = var.project_id
@@ -105,119 +95,55 @@ resource "google_compute_firewall" "agent_gateway_psc_i" {
   }
 }
 
-# The Agent Gateway itself. Created via gcloud and linked to the Agent Connectivity Template.
-resource "terraform_data" "agent_gateway" {
-  input = {
-    project_id            = var.project_id
-    project_number        = var.project_number
-    region                = var.region
-    agent_gateway_name    = var.name
-    template_name         = var.template_name != null ? var.template_name : "${var.name}-template"
-    network_attachment_id = google_compute_network_attachment.agent_gateway.id
-    network_path          = local.network_path
-  }
-
-  provisioner "local-exec" {
-    when    = create
-    command = <<-EOT
-      set -e
-      cd ..
-      echo "Creating Agent Connectivity Template..."
-      ./scripts/create_connectivity_template.sh "${self.input.project_id}" "${self.input.region}" "${self.input.template_name}" "${self.input.network_attachment_id}" "${self.input.network_path}"
-
-      echo "Generating Agent Gateway YAML config..."
-      cat <<EOF > config/my-agent-gateway-vpc-egress.yaml
-name: ${self.input.agent_gateway_name}
-protocols:
-  - MCP
-googleManaged:
-  governedAccessPath: AGENT_TO_ANYWHERE
-agentConnectivityTemplate: projects/${self.input.project_number}/locations/${self.input.region}/agentConnectivityTemplates/${self.input.template_name}
-registries:
-  - //agentregistry.googleapis.com/projects/${self.input.project_id}/locations/${self.input.region}
-EOF
-
-      echo "Importing Agent Gateway via gcloud..."
-      gcloud alpha network-services agent-gateways import "${self.input.agent_gateway_name}" \
-        --source="config/my-agent-gateway-vpc-egress.yaml" \
-        --location="${self.input.region}" \
-        --project="${self.input.project_id}"
-
-      echo "Creating allow-all AuthzPolicy YAML config..."
-      cat <<EOF > config/agent-gateway-authz-policy.yaml
-name: projects/${self.input.project_id}/locations/${self.input.region}/authzPolicies/${self.input.agent_gateway_name}-allow-all
-action: ALLOW
-policyProfile: REQUEST_AUTHZ
-target:
-  resources:
-  - projects/${self.input.project_number}/locations/${self.input.region}/agentGateways/${self.input.agent_gateway_name}
-httpRules:
-- when: 'true'
-EOF
-
-      echo "Importing allow-all AuthzPolicy via gcloud..."
-      gcloud network-security authz-policies import "${self.input.agent_gateway_name}-allow-all" \
-        --source="config/agent-gateway-authz-policy.yaml" \
-        --location="${self.input.region}" \
-        --project="${self.input.project_id}"
-    EOT
-  }
-
-  provisioner "local-exec" {
-    when    = destroy
-    command = <<-EOT
-      echo "Deleting AuthzPolicy..."
-      gcloud network-security authz-policies delete "${self.input.agent_gateway_name}-allow-all" \
-        --location="${self.input.region}" \
-        --project="${self.input.project_id}" \
-        --quiet || true
-
-      echo "Resetting agent-gateway-authz-policy.yaml to placeholder template..."
-      cat <<EOF > config/agent-gateway-authz-policy.yaml
-name: projects/PROJECT_ID/locations/REGION/authzPolicies/agent-gateway-allow-all
-action: ALLOW
-policyProfile: REQUEST_AUTHZ
-target:
-  resources:
-  - projects/PROJECT_NUMBER/locations/REGION/agentGateways/agent-gateway
-httpRules:
-- when: 'true'
-EOF
-
-      echo "Deleting Agent Gateway..."
-      gcloud alpha network-services agent-gateways delete "${self.input.agent_gateway_name}" \
-        --location="${self.input.region}" \
-        --project="${self.input.project_id}" \
-        --quiet || true
-
-      cd ..
-      echo "Deleting Agent Connectivity Template..."
-      ./scripts/delete_connectivity_template.sh "${self.input.project_id}" "${self.input.region}" "${self.input.template_name}" || true
-
-      echo "Resetting my-agent-gateway-vpc-egress.yaml to placeholder template..."
-      cat <<EOF > config/my-agent-gateway-vpc-egress.yaml
-name: agent-gateway
-protocols:
-  - MCP
-googleManaged:
-  governedAccessPath: AGENT_TO_ANYWHERE
-agentConnectivityTemplate: projects/PROJECT_NUMBER/locations/REGION/agentConnectivityTemplates/cuj2-template
-registries:
-  - //agentregistry.googleapis.com/projects/PROJECT_ID/locations/REGION
-EOF
-    EOT
-  }
-
+# The Agent Gateway itself. Google-managed, AGENT_TO_ANYWHERE.
+resource "google_network_services_agent_gateway" "this" {
   depends_on = [
     google_compute_network_attachment.agent_gateway,
     google_compute_firewall.agent_gateway_psc_i,
     terraform_data.network_attachment_drain
   ]
+
+  project  = var.project_id
+  name     = var.name
+  location = var.region
+
+  google_managed {
+    governed_access_path = "AGENT_TO_ANYWHERE"
+  }
+
+  registries = [local.registry_uri]
+
+  network_config {
+    egress {
+      network_attachment = google_compute_network_attachment.agent_gateway.id
+    }
+  }
 }
 
-# Allow the Agent Gateway and AuthzPolicy to stabilize before dependent resources
-# reference the gateway ID (e.g. the reasoning engine's agent_gateway_config).
+# Allow the Agent Gateway to stabilize before attaching authz policies.
 resource "time_sleep" "wait_for_gateway" {
-  depends_on      = [terraform_data.agent_gateway]
+  depends_on      = [google_network_services_agent_gateway.this]
   create_duration = "30s"
+}
+
+# Allow-all AuthzPolicy attached to the Agent Gateway.
+# In AGENT_TO_ANYWHERE mode, the Agent Gateway acts as a default-deny L7 proxy.
+# We permit traffic through to the customer VPC where Secure Web Proxy (SWP)
+# and GatewaySecurityPolicy enforce L7 governance.
+resource "google_network_security_authz_policy" "allow_all" {
+  depends_on     = [time_sleep.wait_for_gateway]
+  provider       = google-beta
+  project        = var.project_id
+  name           = "${var.name}-allow-all"
+  location       = var.region
+  policy_profile = "REQUEST_AUTHZ"
+  action         = "ALLOW"
+
+  target {
+    resources = [google_network_services_agent_gateway.this.id]
+  }
+
+  http_rules {
+    when = "true"
+  }
 }
