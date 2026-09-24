@@ -64,6 +64,18 @@ if [ "$HTTP_CODE" = "409" ]; then
     }" || true
 else
   echo "$BODY"
+  OP_NAME=$(echo "$BODY" | jq -r .name 2>/dev/null || true)
+  if [ -n "$OP_NAME" ] && [ "$OP_NAME" != "null" ]; then
+    echo "Waiting for template creation operation to complete..."
+    for _ in $(seq 1 30); do
+      DONE=$(curl -s -H "Authorization: Bearer ${TOKEN}" "https://networkservices.googleapis.com/v1/${OP_NAME}" | jq -r .done 2>/dev/null || true)
+      if [ "$DONE" = "true" ]; then
+        echo "Template creation operation complete."
+        break
+      fi
+      sleep 3
+    done
+  fi
 fi
 
 echo ""
