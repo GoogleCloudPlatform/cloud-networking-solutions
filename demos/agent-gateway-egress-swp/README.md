@@ -372,6 +372,19 @@ must be **/26 or larger**. A /28 is too small for PSC-Interface to allocate
 endpoints. If you change the default, do not use a prefix length larger than 26
 (e.g. /27, /28).
 
+### AgentConnectivityTemplate teardown & pre-GA reference retention
+
+When an `AgentGateway` is deleted, Google Cloud's internal Network Services control plane retains a tombstone reference on the associated `AgentConnectivityTemplate` until background garbage collection purges it. Attempting to delete the template immediately via `delete_connectivity_template.sh` returns:
+`400 FAILED_PRECONDITION: Resource is already being used by resource(s) agentGateways/agent-gateway`.
+
+- **Zero Cost:** An idle `AgentConnectivityTemplate` is purely metadata and carries **zero cost ($0.00)**.
+- **Zero Impact on Re-apply:** It does not block subsequent `terraform apply` runs — `create_connectivity_template.sh` detects the existing template and binds the new gateway to it seamlessly.
+- **Delayed Cleanup:** Once Google's background reaper purges the deleted gateway's tombstone reference, you can delete the template at any time with:
+  ```bash
+  gcloud alpha network-services agent-connectivity-templates delete cuj2-template \
+    --location=us-central1 --project=YOUR_PROJECT_ID --quiet
+  ```
+
 ### Only one ACTIVE REGIONAL_MANAGED_PROXY subnet per region per VPC
 
 GCP allows only one `ACTIVE` `REGIONAL_MANAGED_PROXY` subnet per VPC per
