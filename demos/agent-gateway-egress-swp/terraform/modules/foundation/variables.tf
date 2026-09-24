@@ -55,6 +55,7 @@ variable "enabled_services" {
     "iam.googleapis.com",
     "iamcredentials.googleapis.com",
     "iap.googleapis.com",
+    "certificatemanager.googleapis.com",
     "sts.googleapis.com",
     "cloudkms.googleapis.com",
     "secretmanager.googleapis.com",

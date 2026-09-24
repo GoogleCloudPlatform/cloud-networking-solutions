@@ -112,7 +112,7 @@ resource "terraform_data" "agent_gateway" {
     project_number        = var.project_number
     region                = var.region
     agent_gateway_name    = var.name
-    template_name         = "cuj2-template"
+    template_name         = var.template_name != null ? var.template_name : "${var.name}-template"
     network_attachment_id = google_compute_network_attachment.agent_gateway.id
     network_path          = local.network_path
   }
@@ -120,6 +120,7 @@ resource "terraform_data" "agent_gateway" {
   provisioner "local-exec" {
     when    = create
     command = <<-EOT
+      set -e
       cd ..
       echo "Creating Agent Connectivity Template..."
       ./scripts/create_connectivity_template.sh "${self.input.project_id}" "${self.input.region}" "${self.input.template_name}" "${self.input.network_attachment_id}" "${self.input.network_path}"

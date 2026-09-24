@@ -26,7 +26,7 @@ PROJECT_NUMBER=$(gcloud projects describe "$PROJECT_ID" --format="value(projectN
 
 echo "Creating AgentConnectivityTemplate ${TEMPLATE_NAME} in ${LOCATION}..."
 
-curl -s -X POST \
+RESPONSE=$(curl -s -w "\n%{http_code}" -X POST \
   -H "Authorization: Bearer ${TOKEN}" \
   -H "Content-Type: application/json" \
   "https://networkservices.googleapis.com/v1/projects/${PROJECT_NUMBER}/locations/${LOCATION}/agentConnectivityTemplates?agentConnectivityTemplateId=${TEMPLATE_NAME}" \
@@ -41,7 +41,30 @@ curl -s -X POST \
         \"targetNetwork\": \"${TARGET_VPC_NETWORK_URI}\"
       }
     }
-  }"
+  }")
+
+HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
+BODY=$(echo "$RESPONSE" | sed '$d')
+
+if [ "$HTTP_CODE" = "409" ]; then
+  echo "Template ${TEMPLATE_NAME} already exists. Attempting PATCH to ensure network config is current..."
+  curl -s -X PATCH \
+    -H "Authorization: Bearer ${TOKEN}" \
+    -H "Content-Type: application/json" \
+    "https://networkservices.googleapis.com/v1/projects/${PROJECT_NUMBER}/locations/${LOCATION}/agentConnectivityTemplates/${TEMPLATE_NAME}?updateMask=egressNetworkConfig" \
+    -d "{
+      \"egressNetworkConfig\": {
+        \"networkAttachment\": \"${NETWORK_ATTACHMENT_URI}\",
+        \"vpcEgress\": \"ALL_TRAFFIC\",
+        \"dnsPeeringConfig\": {
+          \"domain\": \"googleapis.com.\",
+          \"targetNetwork\": \"${TARGET_VPC_NETWORK_URI}\"
+        }
+      }
+    }" || true
+else
+  echo "$BODY"
+fi
 
 echo ""
 echo "Note: The AgentGateway configuration in Terraform needs to reference this template's name."
