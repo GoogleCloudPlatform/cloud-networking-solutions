@@ -217,7 +217,6 @@ module "agent_gateway" {
   region         = var.region
 
   name                           = var.agent_gateway_name
-  template_name                  = "${var.name_prefix}-act"
   network_self_link              = module.networking.network_self_link
   agent_gateway_subnet_self_link = module.networking.agent_gateway_subnet_self_link
   agent_gateway_subnet_cidr      = var.agent_gateway_subnet_cidr

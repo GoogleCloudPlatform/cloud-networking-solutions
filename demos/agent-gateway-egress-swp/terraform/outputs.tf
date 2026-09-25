@@ -123,3 +123,8 @@ output "agent_gateway_name" {
   description = "The short name of the Agent Gateway."
   value       = module.agent_gateway.agent_gateway_name
 }
+
+output "agent_connectivity_template_name" {
+  description = "Dynamic name of the Agent Connectivity Template used by the Agent Gateway."
+  value       = module.agent_gateway.template_name
+}
