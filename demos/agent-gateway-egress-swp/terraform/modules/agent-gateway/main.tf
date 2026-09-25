@@ -24,8 +24,16 @@
  * before exiting via Cloud NAT with the reserved static IP.
  */
 
+# Generate a unique suffix for the Agent Connectivity Template to ensure every
+# deployment gets a fresh, pristine template, completely bypassing pre-GA alpha
+# foreign-key tombstone retention locks from previous runs.
+resource "random_id" "template_suffix" {
+  byte_length = 3
+}
+
 locals {
-  registry_uri = "//agentregistry.googleapis.com/projects/${var.project_id}/locations/${var.region}"
+  registry_uri  = "//agentregistry.googleapis.com/projects/${var.project_id}/locations/${var.region}"
+  template_name = var.template_name != null ? var.template_name : "${var.name}-act-${random_id.template_suffix.hex}"
 }
 
 # PSC-Interface network attachment in the dedicated Agent Gateway subnet.
@@ -101,7 +109,7 @@ resource "terraform_data" "agent_gateway" {
     project_number        = var.project_number
     region                = var.region
     agent_gateway_name    = var.name
-    template_name         = var.template_name != null ? var.template_name : "${var.name}-template"
+    template_name         = local.template_name
     network_attachment_id = google_compute_network_attachment.agent_gateway.id
     registry_uri          = local.registry_uri
   }

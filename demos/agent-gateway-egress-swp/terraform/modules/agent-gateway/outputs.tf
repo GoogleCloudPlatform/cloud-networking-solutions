@@ -47,3 +47,8 @@ output "wait_for_gateway_id" {
   description = "ID of the time_sleep resource — pass as a dependency input to the agent-engine module so the engine is not created until the gateway is ready"
   value       = time_sleep.wait_for_gateway.id
 }
+
+output "template_name" {
+  description = "Dynamic name of the Agent Connectivity Template linked to the gateway"
+  value       = local.template_name
+}
