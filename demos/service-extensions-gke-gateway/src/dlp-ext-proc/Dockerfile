@@ -66,7 +66,7 @@ COPY --from=builder /bin/ext-proc-server /usr/local/bin/ext-proc-server
 RUN chown extproc:extproc /usr/local/bin/ext-proc-server
 
 # Switch to non-root user
-USER extproc
+USER 1000:1000
 
 # Expose gRPC ports (8080=plaintext health, 8443=TLS for LB traffic)
 EXPOSE 8080 8443

@@ -12,18 +12,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-name: Auto-Approve Renovate PRs
+FROM python:3.11-slim
 
-on:
-  pull_request_target:
-    types: [opened, synchronize, reopened]
+ENV PYTHONUNBUFFERED=1 \
+    PORT=8080
 
-jobs:
-  approve:
-    runs-on: ubuntu-latest
-    if: github.actor == 'renovate[bot]'
-    steps:
-      - name: Auto-approve Renovate PR
-        uses: hmarr/auto-approve-action@v4
-        with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
+WORKDIR /app
+
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY . .
+
+CMD ["python", "__main__.py", "--host", "0.0.0.0", "--port", "8080"]

@@ -22,7 +22,7 @@ from vertexai.preview import reasoning_engines
 
 def main():
     parser = argparse.ArgumentParser(description="Dynamically resolve deployed Reasoning Engine IDs")
-    parser.add_argument("--project", default=os.getenv("PROJECT_ID", "deepakmichael-svc3"), help="GCP Project ID")
+    parser.add_argument("--project", default=os.getenv("PROJECT_ID", "centralized-governance-project"), help="GCP Project ID")
     parser.add_argument("--region", default=os.getenv("REGION", "us-central1"), help="GCP Region")
     args = parser.parse_args()
 

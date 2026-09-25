@@ -23,6 +23,33 @@ from google.adk.agents.callback_context import CallbackContext
 from google.adk.tools.tool_context import ToolContext
 from vertexai.preview import reasoning_engines
 
+STATE_FILE = "/tmp/purchasing_concierge_shared_state.json"
+
+def get_shared_state() -> dict:
+    try:
+        if os.path.exists(STATE_FILE):
+            with open(STATE_FILE, "r") as f:
+                return json.load(f)
+    except Exception:
+        pass
+    return {}
+
+def set_shared_state(data: dict):
+    try:
+        current = get_shared_state()
+        current.update(data)
+        with open(STATE_FILE, "w") as f:
+            json.dump(current, f)
+    except Exception:
+        pass
+
+def clear_shared_state():
+    try:
+        if os.path.exists(STATE_FILE):
+            os.remove(STATE_FILE)
+    except Exception:
+        pass
+
 class PurchasingAgent:
     """The purchasing agent.
 
@@ -34,7 +61,7 @@ class PurchasingAgent:
         self,
         agent_ids: Dict[str, str],
     ):
-        self.agent_ids = agent_ids
+        self.agent_ids = {k: v for k, v in agent_ids.items() if v}
         self.agent_urls = {}
         self.agents = ""
         self.a2a_client_init_status = False
@@ -68,45 +95,53 @@ class PurchasingAgent:
 
     def root_instruction(self, context: ReadonlyContext) -> str:
         current_agent = self.check_active_agent(context)
-        return f"""You are an expert purchasing delegator that can delegate the user product inquiry and purchase request to the
-appropriate seller remote agents.
+        shared = get_shared_state()
+        pending_desc = shared.get("pending_description", "None")
+        return f"""You are an expert purchasing delegator that coordinates user product inquiries and purchasing requests with remote seller agents.
+
+Routing & Intent Rules:
+- When the user's request involves burgers, fries, or burger menu items (e.g. Classic Cheeseburger, Double Cheeseburger, Spicy Chicken Burger, Spicy Cajun Burger), route EXCLUSIVELY to `burger_seller_agent`.
+- When the user's request involves pizza, pasta, or pizza menu items (e.g. Margherita, Pepperoni, Hawaiian, Veggie, BBQ Chicken), route EXCLUSIVELY to `pizza_seller_agent`.
+- When the user provides a confirmation (e.g., 'yes', 'confirmed', 'proceed', 'place this order'):
+  * If the previous topic or pending order was about pizza, delegate to `pizza_seller_agent`.
+  * If the previous topic or pending order was about burgers, delegate to `burger_seller_agent`.
+  * NEVER route a pizza confirmation to `burger_seller_agent`, and NEVER route a burger confirmation to `pizza_seller_agent`.
+  * If it is ambiguous or there is no active/pending order, ask the user to clarify: "Which order would you like to confirm: pizza or burger?"
 
 Execution:
-- For actionable tasks, you can use `send_task` to assign tasks to remote agents to perform.
-- When the remote agent is repeatedly asking for user confirmation, assume that the remote agent doesn't have access to user's conversation context.
-    So improve the task description to include all the necessary information related to that agent
-- Never ask user permission when you want to connect with remote agents. If you need to make connection with multiple remote agents, directly
-    connect with them without asking user permission or asking user preference
-- Always show the detailed response information from the seller agent and propagate it properly to the user.
-- If the remote seller is asking for confirmation, rely the confirmation question with proper and necessary information to the user if the user haven't do so.
-- If the user already confirmed the related order in the past conversation history, you can confirm on behalf of the user
-- Do not give irrelevant context to remote seller agent. For example, ordered pizza item is not relevant for the burger seller agent
-- Never ask order confirmation to the remote seller agent
-
-Please rely on tools to address the request, and don't make up the response. If you are not sure, please ask the user for more details.
-Focus on the most recent parts of the conversation primarily.
-
-If there is an active agent, send the request to that agent with the update task tool.
+- For actionable tasks, use `send_task` to assign tasks to remote agents to perform.
+- When delegating an order confirmation on behalf of the user, provide complete order details in the task so the remote seller can finalize it.
+- Never ask user permission when you want to connect with remote agents. Directly connect with them without asking user permission.
+- Always show the detailed response information from the seller agent (including prices, items, and Order IDs) and propagate it properly to the user.
+- If the remote seller is asking for confirmation, relay the confirmation question with proper and necessary information to the user.
+- If the user already confirmed the related order, you can confirm on behalf of the user.
+- Do not give irrelevant context to remote seller agent (e.g. ordered pizza item is not relevant for the burger seller agent).
 
 Agents:
 {self.agents}
 
 Current active seller agent: {current_agent["active_agent"]}
+Pending transaction context: {pending_desc}
 """
 
     def check_active_agent(self, context: ReadonlyContext):
-        state = context.state
-        if (
-            "session_id" in state
-            and "session_active" in state
-            and state["session_active"]
-            and "active_agent" in state
-        ):
-            return {"active_agent": f"{state['active_agent']}"}
+        shared = get_shared_state()
+        active = shared.get("active_agent") or shared.get("pending_agent")
+        if not active:
+            state = context.state
+            if (
+                "session_id" in state
+                and "session_active" in state
+                and state["session_active"]
+                and "active_agent" in state
+            ):
+                active = state["active_agent"]
+        if active:
+            return {"active_agent": f"{active}"}
         return {"active_agent": "None"}
 
     async def before_agent_callback(self, callback_context: CallbackContext):
-        if not self.a2a_client_init_status:
+        if not self.a2a_client_init_status or not self.agent_ids.get("burger_seller_agent"):
             governance_project = (
                 os.getenv("GOVERNANCE_PROJECT_ID")
                 or os.getenv("AGENT_GATEWAY_PROJECT_ID")
@@ -125,7 +160,7 @@ Current active seller agent: {current_agent["active_agent"]}
                 import requests
                 import re
 
-                credentials, _ = google.auth.default()
+                credentials, _ = google.auth.default(scopes=["https://www.googleapis.com/auth/cloud-platform"])
                 auth_req = google.auth.transport.requests.Request()
                 credentials.refresh(auth_req)
 
@@ -155,17 +190,21 @@ Current active seller agent: {current_agent["active_agent"]}
                             discovered_agents["pizza_seller_agent"] = resource_path
                             discovered_agents["pizza-seller-agent-adk"] = resource_path
 
+                    print(f"Successfully auto-discovered agents from registry: {discovered_agents}", flush=True)
+                else:
+                    print(f"Warning: Agent Registry request to {url} returned HTTP {resp.status_code}: {resp.text}", flush=True)
+
                 if discovered_agents:
                     self.agent_ids.update(discovered_agents)
             except Exception as e:
-                print(f"Warning: Failed to auto-discover agents from Agent Registry in project {governance_project}: {e}")
+                print(f"Warning: Failed to auto-discover agents from Agent Registry in project {governance_project}: {e}", flush=True)
 
-            # Fallback to environment variables if present (no hardcoded defaults)
-            if "burger_seller_agent" not in self.agent_ids and os.getenv("BURGER_SELLER_AGENT_ID"):
+            # Fallback to environment variables if present
+            if not self.agent_ids.get("burger_seller_agent") and os.getenv("BURGER_SELLER_AGENT_ID"):
                 self.agent_ids["burger_seller_agent"] = os.getenv("BURGER_SELLER_AGENT_ID")
                 self.agent_ids["burger-seller-agent-adk"] = os.getenv("BURGER_SELLER_AGENT_ID")
 
-            if "pizza_seller_agent" not in self.agent_ids and os.getenv("PIZZA_SELLER_AGENT_ID"):
+            if not self.agent_ids.get("pizza_seller_agent") and os.getenv("PIZZA_SELLER_AGENT_ID"):
                 self.agent_ids["pizza_seller_agent"] = os.getenv("PIZZA_SELLER_AGENT_ID")
                 self.agent_ids["pizza-seller-agent-adk"] = os.getenv("PIZZA_SELLER_AGENT_ID")
 
@@ -174,7 +213,8 @@ Current active seller agent: {current_agent["active_agent"]}
                 if name in self.agent_ids or name in self.agent_urls:
                     agent_info.append(json.dumps({"name": meta["name"], "description": meta["description"]}))
             self.agents = "\n".join(agent_info)
-            self.a2a_client_init_status = True
+            if "burger_seller_agent" in self.agent_ids or "pizza_seller_agent" in self.agent_ids:
+                self.a2a_client_init_status = True
 
     async def before_model_callback(
         self, callback_context: CallbackContext, llm_request
@@ -194,13 +234,28 @@ Current active seller agent: {current_agent["active_agent"]}
             agent_name: The name of the agent to send the task to. Must be one of: burger_seller_agent, pizza_seller_agent.
             task: The comprehensive conversation context summary and goal to be achieved regarding user inquiry and purchase request.
         """
-        if "burger" in agent_name.lower():
+        task_lower = task.lower()
+        if "pizza" in task_lower and "burger" not in task_lower:
+            agent_name = "pizza_seller_agent"
+        elif "burger" in task_lower and "pizza" not in task_lower:
+            agent_name = "burger_seller_agent"
+        elif "burger" in agent_name.lower():
             agent_name = "burger_seller_agent"
         elif "pizza" in agent_name.lower():
             agent_name = "pizza_seller_agent"
 
-        if agent_name not in self.agent_ids and agent_name not in self.agent_urls:
-            return f"Error: Agent {agent_name} not found"
+        # Check in self.agent_ids or fallback to env vars
+        agent_id = self.agent_ids.get(agent_name)
+        if not agent_id:
+            if agent_name == "burger_seller_agent":
+                agent_id = os.getenv("BURGER_SELLER_AGENT_ID")
+            elif agent_name == "pizza_seller_agent":
+                agent_id = os.getenv("PIZZA_SELLER_AGENT_ID")
+            if agent_id:
+                self.agent_ids[agent_name] = agent_id
+
+        if not agent_id and agent_name not in self.agent_urls:
+            return f"Error: Agent {agent_name} not found in registered agents: {list(self.agent_ids.keys())}"
 
         state = tool_context.state
         state["active_agent"] = agent_name
@@ -208,36 +263,95 @@ Current active seller agent: {current_agent["active_agent"]}
         if "session_id" not in state:
             state["session_id"] = str(uuid.uuid4())
         session_id = state["session_id"]
-        agent_id = self.agent_ids.get(agent_name)
         if not agent_id:
             return f"Error: ID for agent {agent_name} not found"
 
-        try:
-            print(f"Calling remote agent {agent_name} (ID: {agent_id}) with task: {task}")
-            if agent_id.startswith("projects/"):
-                target_project = agent_id.split("/")[1]
-            else:
-                target_project = os.getenv("GOOGLE_CLOUD_PROJECT") or os.getenv("AGENT_PROJECT_ID") or "agent-runtime1"
-            location = os.getenv("AGENT_REGION") or os.getenv("GOOGLE_CLOUD_LOCATION") or "us-central1"
-            vertexai.init(project=target_project, location=location)
-            engine = reasoning_engines.ReasoningEngine(agent_id)
-            try:
-                res = engine.query(message=task, user_id="purchasing_agent", session_id=session_id)
-            except Exception:
-                res = engine.query(input={"message": task, "user_id": "purchasing_agent", "session_id": session_id})
+        if not agent_id.startswith("projects/"):
+            seller_project = os.getenv("SELLER_PROJECT_ID", "1015660890618")
+            location = os.getenv("AGENT_REGION", "us-central1")
+            agent_id = f"projects/{seller_project}/locations/{location}/reasoningEngines/{agent_id}"
 
-            if isinstance(res, dict) and "output" in res:
-                final_text = res["output"]
+        try:
+            print(f"Calling remote agent {agent_name} (ID: {agent_id}) with task: {task}", flush=True)
+            if agent_id.startswith("projects/"):
+                parts = agent_id.split("/")
+                target_project = parts[1]
             else:
-                final_text = str(res)
+                target_project = os.getenv("PROJECT_SELLERS") or os.getenv("GOOGLE_CLOUD_PROJECT") or "agent-runtime2"
+            location = os.getenv("AGENT_REGION") or os.getenv("GOOGLE_CLOUD_LOCATION") or "us-central1"
+
+            import google.auth
+            import google.auth.transport.requests
+            import requests
+
+            credentials, _ = google.auth.default(scopes=["https://www.googleapis.com/auth/cloud-platform"])
+            auth_req = google.auth.transport.requests.Request()
+            credentials.refresh(auth_req)
+            headers = {
+                "Authorization": f"Bearer {credentials.token}",
+                "Content-Type": "application/json"
+            }
+            ca_bundle = "/etc/ssl/certs/ca-certificates.crt" if os.path.exists("/etc/ssl/certs/ca-certificates.crt") else True
+            rest_url = f"https://{location}-aiplatform.mtls.googleapis.com/v1beta1/{agent_id}:query"
+            payload = {
+                "input": {
+                    "message": task,
+                    "user_id": "purchasing_agent",
+                    "session_id": session_id
+                }
+            }
+            print(f"Sending REST POST to {rest_url} (verify={ca_bundle})", flush=True)
+            resp = requests.post(rest_url, headers=headers, json=payload, verify=ca_bundle, timeout=60)
+            if resp.status_code == 403:
+                err_msg = f"HTTP 403 Forbidden. Access to {agent_name} was denied by security policy: {resp.text}"
+                print(f"Authz denied for {agent_name}: {err_msg}", flush=True)
+                return f"Error calling agent {agent_name}: {err_msg}"
+            elif resp.status_code != 200:
+                err_msg = f"HTTP {resp.status_code}: {resp.text}"
+                print(f"Error calling {agent_name}: {err_msg}", flush=True)
+                return f"Error calling agent {agent_name}: {err_msg}"
+
+            res_json = resp.json()
+            output_obj = res_json.get("output", {})
+            if isinstance(output_obj, dict):
+                final_text = output_obj.get("text") or output_obj.get("output")
+                if not final_text and "content" in output_obj:
+                    parts = output_obj.get("content", {}).get("parts", [])
+                    if parts:
+                        final_text = parts[0].get("text")
+            else:
+                final_text = str(output_obj)
 
             if not final_text:
                 final_text = "Task executed successfully by remote agent."
 
-            print(f"Response from {agent_name}: {final_text}")
+            lower_resp = final_text.lower()
+            if "order id" in lower_resp or "has been placed" in lower_resp or "order placed" in lower_resp:
+                state["active_agent"] = None
+                state["pending_agent"] = None
+                clear_shared_state()
+                print(f"Order finalized for {agent_name}. Cleared active agent state.", flush=True)
+            elif "confirm" in lower_resp or "proceed" in lower_resp or "cost" in lower_resp or "total" in lower_resp:
+                state["active_agent"] = agent_name
+                state["pending_agent"] = agent_name
+                set_shared_state({
+                    "active_agent": agent_name,
+                    "pending_agent": agent_name,
+                    "pending_description": f"Awaiting user confirmation for {agent_name}: {task}"
+                })
+                print(f"Order pending confirmation for {agent_name}. Updated shared state.", flush=True)
+            else:
+                state["active_agent"] = agent_name
+                set_shared_state({
+                    "active_agent": agent_name,
+                    "pending_agent": agent_name,
+                    "pending_description": f"Active inquiry with {agent_name}"
+                })
+
+            print(f"Response from {agent_name}: {final_text}", flush=True)
             return final_text
         except Exception as e:
-            print(f"Error calling remote agent {agent_name}: {e}")
+            print(f"Error calling remote agent {agent_name}: {e}", flush=True)
             import traceback
             traceback.print_exc()
             return f"Error calling agent {agent_name}: {e}"

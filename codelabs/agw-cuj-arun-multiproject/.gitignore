@@ -176,3 +176,17 @@ cython_debug/
 
 # AI Agent workspace customizations
 .agents/
+
+# Transcript logs & local docs
+all_transcripts.md
+codelab_*.md
+CROSS_PROJECT_IAM.md
+GE_*.md
+GE_*.html
+ADK_DEPLOYMENT_COMPARISON.md
+img/
+
+# Gateway & Security manifests
+cfg/
+iap_agent_policy.json
+burger_agent_*.json

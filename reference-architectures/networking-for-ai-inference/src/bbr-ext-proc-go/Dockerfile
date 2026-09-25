@@ -49,6 +49,6 @@ ENV LOG_LEVEL=INFO
 EXPOSE 8080
 
 # Run as non-root user (provided by distroless/nonroot)
-USER nonroot:nonroot
+USER 65532:65532
 
 ENTRYPOINT ["/app/bbr-ext-proc"]

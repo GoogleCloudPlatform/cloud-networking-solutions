@@ -17,6 +17,7 @@ import os
 os.environ["GOOGLE_API_USE_CLIENT_CERTIFICATE"] = "false"
 os.environ["GOOGLE_API_USE_MTLS_ENDPOINT"] = "never"
 import vertexai
+import agentplatform
 from dotenv import load_dotenv
 from cleanup_old_deployments import delete_old_deployments
 
@@ -33,20 +34,20 @@ def main():
 
     gateway_project = args.gateway_project or args.project
 
-    staging_bucket = args.staging_bucket or f"gs://{args.project}-staging"
-    if not staging_bucket.startswith("gs://"):
-        staging_bucket = f"gs://{staging_bucket}"
+    staging_arg = args.staging_bucket or f"{args.project}-staging"
+    staging_bucket_name = staging_arg.removeprefix("gs://")
+    staging_bucket_uri = f"gs://{staging_bucket_name}"
 
     vertexai.init(
         project=args.project,
         location=args.region,
-        staging_bucket=staging_bucket,
+        staging_bucket=staging_bucket_uri,
     )
 
     print("Cleaning up old unused seller agent deployments...")
     delete_old_deployments(args.project, args.region, ["burger-seller-agent-adk", "pizza-seller-agent-adk", "purchasing-concierge-adk"])
 
-    client = vertexai.Client(
+    client = agentplatform.Client(
         project=args.project,
         location=args.region,
         http_options=dict(api_version="v1beta1"),
@@ -117,9 +118,8 @@ def main():
 
             return message, effective_user_id, effective_session_id, kwargs
 
-        def query(self, input = None, user_id = None, session_id = None, **kwargs) -> dict:
+        def stream_query(self, input = None, user_id = None, session_id = None, **kwargs):
             message, effective_user_id, effective_session_id, clean_kwargs = self._parse_args(input, user_id, session_id, **kwargs)
-            final_text = ""
             for chunk in self.app.stream_query(message=message, user_id=effective_user_id, session_id=effective_session_id, **clean_kwargs):
                 if isinstance(chunk, dict) and isinstance(chunk.get("content"), dict):
                     parts = chunk["content"].get("parts", [])
@@ -127,13 +127,41 @@ def main():
                         for part in parts:
                             if isinstance(part, dict) and "text" in part:
                                 if not part.get("thought") and not part.get("raw_thought"):
-                                    final_text += part["text"]
-            return {"output": final_text}
+                                    text_val = part["text"]
+                                    if text_val:
+                                        yield {
+                                            "output": text_val,
+                                            "text": text_val,
+                                            "content": {
+                                                "parts": [{"text": text_val}],
+                                                "role": "model"
+                                            }
+                                        }
+                elif isinstance(chunk, str) and chunk:
+                    yield {
+                        "output": chunk,
+                        "text": chunk,
+                        "content": {
+                            "parts": [{"text": chunk}],
+                            "role": "model"
+                        }
+                    }
 
-        def stream_query(self, input = None, user_id = None, session_id = None, **kwargs):
-            message, effective_user_id, effective_session_id, clean_kwargs = self._parse_args(input, user_id, session_id, **kwargs)
-            for chunk in self.app.stream_query(message=message, user_id=effective_user_id, session_id=effective_session_id, **clean_kwargs):
-                yield chunk
+        def query(self, input = None, user_id = None, session_id = None, **kwargs) -> dict:
+            final_text = ""
+            for item in self.stream_query(input=input, user_id=user_id, session_id=session_id, **kwargs):
+                if isinstance(item, dict) and "output" in item:
+                    final_text += item["output"]
+                elif isinstance(item, str):
+                    final_text += item
+            return {
+                "output": final_text,
+                "text": final_text,
+                "content": {
+                    "parts": [{"text": final_text}],
+                    "role": "model"
+                }
+            }
 
         async def async_query(self, input = None, user_id = None, session_id = None, **kwargs) -> dict:
             return self.query(input=input, user_id=user_id, session_id=session_id, **kwargs)
@@ -143,10 +171,14 @@ def main():
                 yield chunk
 
     common_config = {
-        "staging_bucket": staging_bucket,
+        "staging_bucket": staging_bucket_uri,
         "requirements": [
             "google-cloud-aiplatform[agent_engines]>=1.149.0",
             "google-adk[a2a,agent-identity]==1.34.0",
+            "httpx>=0.28.1",
+            "requests>=2.32.0",
+            "cloudpickle>=3.0.0",
+            "pydantic>=2.0.0",
         ],
         "extra_packages": ["./remote_seller_agents"],
         "identity_type": "AGENT_IDENTITY",
@@ -162,20 +194,22 @@ def main():
         }
     }
 
+    from google.adk.sessions import InMemorySessionService
+
     # Deploy Burger Agent
     print("Deploying Burger Agent with Agent Identity & Agent Gateway...")
-    burger_app = reasoning_engines.AdkApp(agent=burger_adk_agent, enable_tracing=False)
+    burger_app = reasoning_engines.AdkApp(agent=burger_adk_agent, session_service_builder=lambda: InMemorySessionService(), enable_tracing=False)
     burger_playground = PlaygroundCompatibleAdkAgent(burger_app)
-    burger_config = {**common_config, "display_name": "burger-seller-agent-adk"}
+    burger_config = {**common_config, "display_name": "burger-seller-agent-adk", "gcs_dir_name": "burger_agent"}
     deployed_burger = client.agent_engines.create(agent=burger_playground, config=burger_config)
     burger_name = deployed_burger.api_resource.name
     print(f"Burger Agent deployed: {burger_name}")
 
     # Deploy Pizza Agent
     print("Deploying Pizza Agent with Agent Identity & Agent Gateway...")
-    pizza_app = reasoning_engines.AdkApp(agent=pizza_adk_agent, enable_tracing=False)
+    pizza_app = reasoning_engines.AdkApp(agent=pizza_adk_agent, session_service_builder=lambda: InMemorySessionService(), enable_tracing=False)
     pizza_playground = PlaygroundCompatibleAdkAgent(pizza_app)
-    pizza_config = {**common_config, "display_name": "pizza-seller-agent-adk"}
+    pizza_config = {**common_config, "display_name": "pizza-seller-agent-adk", "gcs_dir_name": "pizza_agent"}
     deployed_pizza = client.agent_engines.create(agent=pizza_playground, config=pizza_config)
     pizza_name = deployed_pizza.api_resource.name
     print(f"Pizza Agent deployed: {pizza_name}")

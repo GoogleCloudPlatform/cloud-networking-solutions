@@ -51,7 +51,8 @@ def delete_old_deployments(project: str, region: str, keep_latest: bool = False,
             except Exception as e:
                 print(f"Failed to delete {eng.name}: {e}")
     except Exception as e:
-                print(f"Error listing reasoning engines for cleanup: {e}")
+        print(f"Notice: Could not list reasoning engines for cleanup (Permission denied or API not enabled: {e}). Skipping cleanup.")
+        print("Tip: Ensure the deploying user/service account has Vertex AI Administrator or AI Platform User roles in the project.")
 
 if __name__ == "__main__":
     import argparse

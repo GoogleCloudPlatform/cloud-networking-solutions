@@ -35,12 +35,17 @@ def create_burger_order(order_items: list[OrderItem]) -> str:
     try:
         order_id = str(uuid.uuid4())
         order = Order(order_id=order_id, status="created", order_items=order_items)
-        print("===")
-        print(f"order created: {order}")
-        print("===")
-        return f"Order {order.model_dump()} has been created"
+        return f"Order {order.model_dump()} has been created successfully. Order ID: {order_id}"
     except Exception as e:
         return f"Error creating order: {e}"
+
+def get_burger_menu() -> str:
+    """Retrieves the full menu of available burgers and their prices in IDR."""
+    return """Available Burger Menu:
+- Classic Cheeseburger: IDR 85,000
+- Double Cheeseburger: IDR 110,000
+- Spicy Chicken Burger: IDR 80,000
+- Spicy Cajun Burger: IDR 85,000"""
 
 burger_agent = LlmAgent(
     name="burger_seller_agent",
@@ -58,12 +63,8 @@ Provided below is the available burger menu and it's related price:
 - Spicy Cajun Burger: IDR 85K
 
 Rules:
-- If user want to do something, you will be following this order:
-    1. Always ensure the user already confirmed the order and total price. This confirmation may already given in the user query.
-    2. Use `create_burger_order` tool to create the order
-    3. Finally, always provide response to the user about the detailed ordered items, price breakdown and total, and order ID
-
-- DO NOT make up menu or price, Always rely on the provided menu given to you as context.
+1. Always verify the burger item requested is in the menu.
+2. When the user confirms an order, invoke create_burger_order.
 """,
-    tools=[create_burger_order],
+    tools=[get_burger_menu, create_burger_order]
 )
