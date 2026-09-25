@@ -34,8 +34,8 @@ if [ "$HTTP_CODE" = "200" ]; then
 elif [ "$HTTP_CODE" = "404" ]; then
   echo "AgentConnectivityTemplate ${TEMPLATE_NAME} not found or already deleted."
 elif [ "$HTTP_CODE" = "400" ]; then
-  echo "Note: Template ${TEMPLATE_NAME} is retained by Google Cloud's pre-GA async reaper (status 400)."
-  echo "It carries \$0.00 cost and will be seamlessly updated and reused on the next terraform apply."
+  echo "Note: Template ${TEMPLATE_NAME} is temporarily retained by Google Cloud's pre-GA async reaper (status 400)."
+  echo "It carries \$0.00 cost. Subsequent terraform applies generate unique dynamic names and will not collide with this template."
 else
   echo "Warning: Delete returned HTTP $HTTP_CODE: $BODY"
 fi
