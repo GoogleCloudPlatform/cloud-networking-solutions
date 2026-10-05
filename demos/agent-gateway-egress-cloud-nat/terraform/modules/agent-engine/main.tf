@@ -160,8 +160,7 @@ resource "terraform_data" "engine_gate" {
 
 resource "google_vertex_ai_reasoning_engine" "bug_triage" {
   count           = var.deploy_reasoning_engine ? 1 : 0
-  provider        = google-beta
-  # deletion_policy = "FORCE"   # ToDo: removed in latest TF version
+  deletion_policy = "FORCE"
 
   depends_on = [
     terraform_data.engine_gate,
@@ -185,7 +184,7 @@ resource "google_vertex_ai_reasoning_engine" "bug_triage" {
 
   spec {
     agent_framework = "google-adk"
-    # identity_type   = "AGENT_IDENTITY" # ToDo: removed in latest TF version
+    identity_type   = "AGENT_IDENTITY"
 
     class_methods = var.deploy_reasoning_engine ? jsonencode(local.agent_artifacts.class_methods) : null
 
@@ -205,12 +204,11 @@ resource "google_vertex_ai_reasoning_engine" "bug_triage" {
 
       # THE CUJ2 MECHANISM: bind all egress to the Agent Gateway so traffic
       # flows through the customer VPC → SWP → Cloud NAT → static IP.
-      # ToDo: removed in latest TF version
-      # agent_gateway_config {
-      #   agent_to_anywhere_config {
-      #     agent_gateway = var.agent_gateway_id
-      #   }
-      # }
+      agent_gateway_config {
+        agent_to_anywhere_config {
+          agent_gateway = var.agent_gateway_id
+        }
+      }
 
       dynamic "env" {
         for_each = local.agent_env

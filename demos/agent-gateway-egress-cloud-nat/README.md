@@ -1,51 +1,33 @@
-# Securing Cross-Cloud Agentic Enterprise Deployments
+# CUJ 1 — Agent Gateway: Public Egress via Cloud NAT Static IP
 
-Supporting code for the
-[Governing agentic workloads with Agent Gateway on Gemini Enterprise Agent Platform](https://codelabs.developers.google.com/cloudnet-agent-gateway)
-codelab.
+The agent (a software bug-triage assistant `bug-tickets-mcp`) reaches a public,
+no-auth **MCP server on Cloud Run** to read bug tickets.
+The Cloud Run service sees the agent's traffic arriving from the static NAT IP,
+which you can confirm in its request logs.
+Tool URLs are discovered at runtime through the Agent Registry rather than
+baked into the agent.
 
 
 
-A multi-tool ADK mortgage agent runs on Vertex AI Agent Runtime and reaches
-three internal MCP servers (`legacy-dms`, `corporate-email`,
-`income-verification-api`) on Cloud Run through the **Agent Gateway**. IAP
-REQUEST_AUTHZ enforces per-tool IAM via Agent Identity, and a Model Armor
-CONTENT_AUTHZ extension screens prompts and responses. Tool URLs are
-discovered at runtime through the Agent Registry rather than baked into the
-agent. End-to-end execution is observable in Cloud Trace.
-
-## Architecture
-
-![Architecture](docs/architecture.png) ##ToDO
 
 ## Repository layout
 
 ```
-agent-gateway/
+agent-gateway-egress-cloud-nat/
+├── config/
 ├── src/
-│   ├── corporate-email/             # Python — MCP corporate email service
-│   ├── income-verification-api/     # Python — MCP income verification API
-│   ├── legacy-dms/                  # Python — MCP legacy document management
-│   └── mortgage-agent/              # Python — ADK agent + deploy_agent.py
-├── terraform/
-│   ├── main.tf, variables.tf, outputs.tf, backend.tf, versions.tf
-│   ├── example.tfvars, example.backend.conf
-│   └── modules/
-│       ├── foundation/              # Project services, APIs, IAM
-│       ├── networking/              # VPC, subnets, firewall, PSC
-│       ├── agent-engine/            # Agent Runtime infrastructure
-│       ├── agent-registry-endpoints/ # Tool registration scripts
-│       ├── mcp-cloud-run/           # Cloud Run services + per-svc runtime SAs
-│       └── model-armor/             # Model Armor templates + DLP integration
-├── cloudrun/                        # Cloud Run service templates (envsubst)
-│   ├── corporate-email.yaml.tmpl
-│   ├── income-verification-api.yaml.tmpl
-│   └── legacy-dms.yaml.tmpl
-├── scripts/
-│   └── grant_agent_mcp_egress.sh    # Per-MCP IAP egress IAM (run after deploy)
-├── skaffold.yaml.tmpl               # Multi-service build + Cloud Run deploy
-├── codelab.md                       # Full walkthrough (source of truth)
-└── docs/architecture.png   ##ToDO
+│   ├── bug-tickets-mcp/
+│   └── software-bug-agent/
+└── terraform/
+    ├── main.tf, variables.tf, outputs.tf, backend.tf, versions.tf
+    ├── example.tfvars, example.backend.conf
+    └── modules/
+        ├── foundation/               # Project services, APIs, IAM
+        ├── networking/               # VPC, subnets, firewall, PSC
+        ├── agent-engine/             # Agent Runtime infrastructure
+        ├── agent-gateway/            # Agent Gateway + service extensions
+        ├── agent-registry-endpoints/ # Tool registration scripts
+        └── mcp-cloud-run/            # Cloud Run services + per-svc runtime SAs
 ```
 
 ## Prerequisites
@@ -140,7 +122,7 @@ gcloud organizations list
 
 ### Step 4 — Phase 1 apply (infrastructure + MCP server)
 
-This creates all networking, SWP, Cloud NAT, the Agent Gateway, and the
+This creates all networking, Cloud NAT, the Agent Gateway, and the
 bug-tickets-mcp Cloud Run service. The Reasoning Engine is NOT created yet
 (`deploy_reasoning_engine` defaults to `false`).
 
@@ -156,8 +138,6 @@ terraform output nat_static_ip          # The IP the MCP server will see
 terraform output bug_tickets_mcp_url    # URL used in deploy_agent.py
 terraform output agent_gateway_id       # Used in --agent-gateway flag
 ```
-
-> **Note:** The configuration to force all traffic to the VPC (`VPC_EGRESS_MODE_ALL_TRAFFIC`) requires an `AgentConnectivityTemplate` resource, which is not yet supported in the Google Terraform provider. The Terraform configuration in `modules/agent-gateway/main.tf` automatically handles creating, binding, unbinding, and deleting this template using `local-exec` provisioners under the hood.
 
 ### Step 5 — Build and stage agent artifacts
 
@@ -191,7 +171,7 @@ terraform apply -var deploy_reasoning_engine=true
 
 This creates the `google_vertex_ai_reasoning_engine` with
 `agent_gateway_config.agent_to_anywhere_config.agent_gateway` bound, so ALL
-agent egress flows through the VPC → SWP → Cloud NAT path.
+agent egress flows through the VPC → Cloud NAT path.
 
 ```bash
 terraform output reasoning_engine_name  # full resource ID
@@ -213,8 +193,8 @@ terraform output nat_static_ip
 
 ### 2. Send a test query to the agent
 
-Go to **Vertex AI > Agent Engine** in the GCP Console, select the deployed
-Reasoning Engine, and click **Test**. Send a prompt like:
+Go to **Agent Platform > Depolyments** in the GCP Console, select the deployed
+Reasoning Engine, and click **Playground**. Send a prompt like:
 
 ```
 List all open P1 bugs assigned to alice@quantumroast.example.
@@ -236,7 +216,8 @@ gcloud logging read \
   --format="value(textPayload)"
 ```
 
-You should see the incoming requests arriving from Cloud NAT. If requests are logged with `200 OK`, the egress path is confirmed end-to-end.
+You should see the incoming requests arriving from Cloud NAT.
+If requests are logged with `200 OK`, the egress path is confirmed end-to-end.
 
 ## Cleanup
 

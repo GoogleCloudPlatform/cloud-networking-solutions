@@ -70,7 +70,7 @@ module "networking" {
   depends_on = [module.foundation]
 }
 
-# Artifact Registry — Regional Docker repository for container images
+# Phase 3: Artifact Registry — Regional Docker repository for container images
 resource "google_artifact_registry_repository" "registry" {
   project       = var.project_id
   location      = var.region
@@ -162,7 +162,7 @@ resource "time_sleep" "cloudbuild_iam_propagation" {
   ]
 }
 
-# Phase 12: MCP Cloud Run services + per-service runtime SAs
+# Phase 4: MCP Cloud Run services + per-service runtime SAs
 module "mcp_services" {
   source = "./modules/mcp-cloud-run"
 
@@ -189,36 +189,6 @@ locals {
     var.agent_artifacts_manifest_path,
     "${path.module}/../build/agent_artifacts.json",
   )
-}
-
-# Phase 10: Agent Engine — Agent Identity IAM bindings
-module "agent_engine" {
-  source = "./modules/agent-engine"
-
-  project_id     = var.project_id
-  project_number = module.foundation.project_number
-
-  organization_id        = var.organization_id
-  platform_admin_members = var.platform_admin_members
-
-  deploy_reasoning_engine       = var.deploy_reasoning_engine
-  agent_gateway_id              = module.agent_gateway.agent_gateway_id
-  agent_artifacts_manifest_path = local.agent_artifacts_manifest_path
-  agent_staging_bucket          = var.agent_staging_bucket
-  agent_model                   = var.agent_model
-  model_endpoint_location       = var.model_endpoint_location
-  agent_display_name            = var.agent_display_name
-
-  # Pass the MCP server URL so the agent container receives BUG_TICKETS_MCP_URL
-  mcp_server_url = try("${module.mcp_services.service_urls["bug-tickets-mcp"]}/mcp", null)
-
-  # Wait for the gateway and registry endpoints to be fully ready before booting the engine.
-  engine_depends_on = [
-    module.agent_gateway.wait_for_gateway_id,
-    module.agent_registry_endpoints.endpoint_egressor_binding_ids
-  ]
-
-  depends_on = [module.foundation, module.agent_registry_endpoints]
 }
 
 # Discovery Engine Admin — Allow user to manage Gemini Enterprise / Discovery Engine
@@ -259,7 +229,7 @@ module "agent_gateway" {
   depends_on = [module.foundation, module.networking]
 }
 
-# Phase 15: Agent Registry Endpoints — governance plane fronting the Google API
+# Phase 6: Agent Registry Endpoints — governance plane fronting the Google API
 # services AND the MCP Cloud Run services. Registers all regional, mTLS, and REP
 # variants of the specified Google APIs, plus one entry per MCP Cloud Run service
 # (URL = https://<service>.<mcp_internal_dns_zone.domain>).
@@ -305,4 +275,34 @@ module "agent_registry_endpoints" {
   mcp_egressor_members = []
 
   depends_on = [module.foundation, module.mcp_services]
+}
+
+# Phase 7: Agent Engine — Agent Identity IAM bindings
+module "agent_engine" {
+  source = "./modules/agent-engine"
+
+  project_id     = var.project_id
+  project_number = module.foundation.project_number
+
+  organization_id        = var.organization_id
+  platform_admin_members = var.platform_admin_members
+
+  deploy_reasoning_engine       = var.deploy_reasoning_engine
+  agent_gateway_id              = module.agent_gateway.agent_gateway_id
+  agent_artifacts_manifest_path = local.agent_artifacts_manifest_path
+  agent_staging_bucket          = var.agent_staging_bucket
+  agent_model                   = var.agent_model
+  model_endpoint_location       = var.model_endpoint_location
+  agent_display_name            = var.agent_display_name
+
+  # Pass the MCP server URL so the agent container receives BUG_TICKETS_MCP_URL
+  mcp_server_url = try("${module.mcp_services.service_urls["bug-tickets-mcp"]}/mcp", null)
+
+  # Wait for the gateway and registry endpoints to be fully ready before booting the engine.
+  engine_depends_on = [
+    module.agent_gateway.wait_for_gateway_id,
+    module.agent_registry_endpoints.endpoint_egressor_binding_ids
+  ]
+
+  depends_on = [module.foundation, module.agent_registry_endpoints]
 }

@@ -34,6 +34,8 @@ platform_admin_members = ["user:admin@example.com"]
 # Phase 2: set to true after running deploy_agent.py --build-only
 # deploy_reasoning_engine = true
 
+cloudbuild_bucket_force_destroy = true
+
 # ##############################################################################
 # # OPTIONAL — everything below this line has a default and is pre-tuned for   #
 # # the demo. Override only when you know you need to.                         #
@@ -60,7 +62,6 @@ mcp_services = {
     container_port = 8080
   }
 }
-cloudbuild_bucket_force_destroy = true
 
 # ==============================================================================
 # PSC INTERFACE - Private Service Connect for Agent Engine
