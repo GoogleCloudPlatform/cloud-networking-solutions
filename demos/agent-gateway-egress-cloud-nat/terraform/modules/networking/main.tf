@@ -92,9 +92,10 @@ resource "google_compute_router_nat" "nat_gateway" {
 }
 
 resource "google_compute_address" "static_address" {
-  name   = "${var.name_prefix}-address"
   project = var.project_id
+  name   = "${var.name_prefix}-address"
   region = var.region
+  address_type = "EXTERNAL"
 }
 
 # PSC Interface — dedicated regular subnet for network attachment

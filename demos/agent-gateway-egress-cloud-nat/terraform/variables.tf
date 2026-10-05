@@ -49,7 +49,7 @@ variable "organization_id" {
 }
 
 variable "platform_admin_members" {
-  description = "List of IAM members granted demo-wide roles: discoveryengine.admin always; modelarmor.admin and modelarmor.floorSettingsAdmin when enable_model_armor; aiplatform.user when enable_agent_engine (e.g. [\"user:admin@example.com\"])"
+  description = "List of IAM members granted demo-wide roles: discoveryengine.admin; aiplatform.user when enable_agent_engine (e.g. [\"user:admin@example.com\"])"
   type        = list(string)
   default     = []
 }
@@ -58,6 +58,12 @@ variable "cloudbuild_bucket_name" {
   description = "Override the Cloud Build source bucket name. Defaults to <project_id>_cloudbuild, which matches the bucket gcloud/Cloud Build SDKs auto-pick when no --gcs-source-staging-dir is passed; overriding the name breaks that convenience."
   type        = string
   default     = null
+}
+
+variable "cloudbuild_bucket_force_destroy" {
+  description = "Allow Terraform to destroy the Cloud Build bucket even if it contains objects. Safe for demos; set false in production."
+  type        = bool
+  default     = true
 }
 
 # ==============================================================================
@@ -147,145 +153,6 @@ variable "mcp_lb_protocol" {
     error_message = "mcp_lb_protocol must be HTTP or HTTPS."
   }
 }
-
-# ==============================================================================
-# MODEL ARMOR CONFIGURATION
-# ==============================================================================
-
-variable "enable_model_armor" {
-  description = "Enable Model Armor template and IAM bindings"
-  type        = bool
-  default     = false
-}
-
-variable "model_armor_request_template_id" {
-  description = "ID for the request-side Model Armor template (RAI + PI/jailbreak; no SDP). Wired into the Agent Gateway CONTENT_AUTHZ extension as request_template_id."
-  type        = string
-  default     = "agw-request-template"
-}
-
-variable "model_armor_response_template_id" {
-  description = "ID for the response-side Model Armor template (RAI; SDP advanced_config when model_armor_sdp_enforcement = ENABLED). Wired into the Agent Gateway CONTENT_AUTHZ extension as response_template_id."
-  type        = string
-  default     = "agw-response-template"
-}
-
-variable "model_armor_rai_filters" {
-  description = "RAI (Responsible AI) filter configurations. filter_type can be: SEXUALLY_EXPLICIT, HATE_SPEECH, HARASSMENT, DANGEROUS. confidence_level can be: LOW_AND_ABOVE, MEDIUM_AND_ABOVE, HIGH"
-  type = list(object({
-    filter_type      = string
-    confidence_level = string
-  }))
-  default = [
-    {
-      filter_type      = "HATE_SPEECH"
-      confidence_level = "MEDIUM_AND_ABOVE"
-    },
-    {
-      filter_type      = "HARASSMENT"
-      confidence_level = "MEDIUM_AND_ABOVE"
-    },
-    {
-      filter_type      = "SEXUALLY_EXPLICIT"
-      confidence_level = "MEDIUM_AND_ABOVE"
-    }
-  ]
-}
-
-variable "model_armor_sdp_enforcement" {
-  description = "Sensitive Data Protection filter enforcement setting (ENABLED or DISABLED)"
-  type        = string
-  default     = "ENABLED"
-  validation {
-    condition     = contains(["ENABLED", "DISABLED"], var.model_armor_sdp_enforcement)
-    error_message = "model_armor_sdp_enforcement must be ENABLED or DISABLED"
-  }
-}
-
-variable "model_armor_pii_types" {
-  description = "Info types whose findings the response Model Armor template's deidentify transformation replaces with the type-name placeholder. Model Armor's SDP filter still runs Google's built-in detectors (including PERSON_NAME) regardless of this list, but only findings whose info type appears here are transformed — anything else is passed through to the agent unchanged. Keep identity fields the agent needs for downstream reasoning (e.g. PERSON_NAME) OUT of this list."
-  type        = list(string)
-  default = [
-    "US_SOCIAL_SECURITY_NUMBER",
-    "CREDIT_CARD_NUMBER",
-    "PHONE_NUMBER",
-    "EMAIL_ADDRESS",
-    "PASSPORT",
-    "DATE_OF_BIRTH",
-    "MEDICAL_RECORD_NUMBER",
-    "IP_ADDRESS",
-    "STREET_ADDRESS",
-  ]
-}
-
-variable "model_armor_pi_jailbreak_enforcement" {
-  description = "PI and jailbreak filter enforcement setting (ENABLED or DISABLED)"
-  type        = string
-  default     = "ENABLED"
-}
-
-variable "model_armor_pi_jailbreak_confidence" {
-  description = "PI and jailbreak filter confidence level (LOW_AND_ABOVE, MEDIUM_AND_ABOVE, or HIGH)"
-  type        = string
-  default     = "LOW_AND_ABOVE"
-  validation {
-    condition     = contains(["LOW_AND_ABOVE", "MEDIUM_AND_ABOVE", "HIGH"], var.model_armor_pi_jailbreak_confidence)
-    error_message = "model_armor_pi_jailbreak_confidence must be one of: LOW_AND_ABOVE, MEDIUM_AND_ABOVE, HIGH"
-  }
-}
-
-variable "model_armor_malicious_uri_enforcement" {
-  description = "Malicious URI filter enforcement setting (ENABLED or DISABLED)"
-  type        = string
-  default     = "ENABLED"
-}
-
-variable "enable_model_armor_mcp_floor_setting" {
-  description = "Enable Model Armor floor setting for MCP server protection (BigQuery MCP)"
-  type        = bool
-  default     = true
-}
-
-variable "enable_model_armor_vertex_ai" {
-  description = "Enable Model Armor integration with Vertex AI (floor setting + IAM)"
-  type        = bool
-  default     = false
-}
-
-variable "model_armor_vertex_ai_inspect_only" {
-  description = "When true, Vertex AI uses INSPECT_ONLY mode; when false, uses INSPECT_AND_BLOCK"
-  type        = bool
-  default     = false
-}
-
-variable "model_armor_vertex_ai_cloud_logging" {
-  description = "Enable Cloud Logging for Vertex AI Model Armor sanitization"
-  type        = bool
-  default     = true
-}
-
-variable "enable_model_armor_gemini_enterprise" {
-  description = "Enable a multi-region Model Armor template for Gemini Enterprise"
-  type        = bool
-  default     = false
-}
-
-variable "model_armor_gemini_enterprise_template_id" {
-  description = "ID for the Gemini Enterprise Model Armor template"
-  type        = string
-  default     = "gemini-enterprise-safety-template"
-}
-
-variable "model_armor_gemini_enterprise_location" {
-  description = "Multi-region location for the Gemini Enterprise template"
-  type        = string
-  default     = "us"
-  validation {
-    condition     = contains(["us", "eu"], var.model_armor_gemini_enterprise_location)
-    error_message = "model_armor_gemini_enterprise_location must be 'us' or 'eu'"
-  }
-}
-
 
 # ==============================================================================
 # AGENT ENGINE DEMO CONFIGURATION

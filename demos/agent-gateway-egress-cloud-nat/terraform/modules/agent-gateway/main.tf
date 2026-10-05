@@ -33,8 +33,16 @@
  * that resolves via standard public DNS. No private zone peering is required.
  */
 
+# Generate a unique suffix for the Agent Connectivity Template to ensure every
+# deployment gets a fresh, pristine template, completely bypassing pre-GA alpha
+# foreign-key tombstone retention locks from previous runs.
+resource "random_id" "template_suffix" {
+  byte_length = 3
+}
+
 locals {
-  registry_uri = "//agentregistry.googleapis.com/projects/${var.project_id}/locations/${var.region}"
+  registry_uri  = "//agentregistry.googleapis.com/projects/${var.project_id}/locations/${var.region}"
+  template_name = var.template_name != null ? var.template_name : "${var.name}-act-${random_id.template_suffix.hex}"
 }
 
 # PSC-Interface network attachment in the dedicated co-location subnet. This is
@@ -60,7 +68,7 @@ resource "google_compute_firewall" "agent_gateway_psc_i" {
 
   allow {
     protocol = "tcp"
-    ports    = [tostring(var.mcp_lb_target_port)]
+    ports    = ["80", "443"]
   }
 }
 
@@ -89,7 +97,7 @@ resource "google_network_services_agent_gateway" "this" {
 resource "google_network_services_agent_connectivity_template" "gateway_template" {
   project  = var.project_id
   location = var.region
-  agent_connectivity_template_id = "${var.name_prefix}-${var.region}-template"
+  agent_connectivity_template_id = local.template_name
 
   access_path = "AGENT_TO_ANYWHERE"
 

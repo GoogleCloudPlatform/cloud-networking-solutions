@@ -27,6 +27,13 @@ organization_id = "123456789012"
 platform_admin_members = ["user:admin@example.com"]
 
 
+# ==============================================================================
+# AGENT ENGINE - Vertex AI Agent Engine
+# ==============================================================================
+
+# Phase 2: set to true after running deploy_agent.py --build-only
+# deploy_reasoning_engine = true
+
 # ##############################################################################
 # # OPTIONAL — everything below this line has a default and is pre-tuned for   #
 # # the demo. Override only when you know you need to.                         #
@@ -53,35 +60,7 @@ mcp_services = {
     container_port = 8080
   }
 }
-
-# ==============================================================================
-# MODEL ARMOR - AI Safety Screening
-# ==============================================================================
-
-# Enable Model Armor templates for AI safety filtering on LB traffic
-enable_model_armor = true
-
-# Enable a multi-region template for Gemini Enterprise
-enable_model_armor_gemini_enterprise = true
-
-# Prompt injection / jailbreak detection confidence threshold
-# Options: LOW_AND_ABOVE, MEDIUM_AND_ABOVE, HIGH
-model_armor_pi_jailbreak_confidence = "MEDIUM_AND_ABOVE"
-
-# Sensitive Data Protection enforcement (ENABLED or DISABLED).
-# When ENABLED, the model-armor module also creates a DLP inspect template
-# (US_SOCIAL_SECURITY_NUMBER), a DLP de-identify template (replace with
-# infoType), and binds the Model Armor service agent to roles/dlp.{user,reader}.
-# The response Model Armor template's sdp_settings.advanced_config is wired to
-# those DLP templates so SSNs in MCP responses are redacted in flight.
-model_armor_sdp_enforcement = "ENABLED"
-
-# ==============================================================================
-# AGENT ENGINE - Vertex AI Agent Engine
-# ==============================================================================
-
-# Phase 2: set to true after running deploy_agent.py --build-only
-# deploy_reasoning_engine = true
+cloudbuild_bucket_force_destroy = true
 
 # ==============================================================================
 # PSC INTERFACE - Private Service Connect for Agent Engine

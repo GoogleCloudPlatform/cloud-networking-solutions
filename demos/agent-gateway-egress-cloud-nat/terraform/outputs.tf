@@ -95,58 +95,6 @@ output "artifact_registry_url" {
   value       = "${var.region}-docker.pkg.dev/${var.project_id}/${google_artifact_registry_repository.registry.repository_id}"
 }
 
-# Model Armor Outputs
-
-output "model_armor_request_template_id" {
-  description = "Request-side Model Armor template ID"
-  value       = var.enable_model_armor ? module.model_armor[0].request_template_id : null
-}
-
-output "model_armor_request_template_name" {
-  description = "Request-side Model Armor template full resource name"
-  value       = var.enable_model_armor ? module.model_armor[0].request_template_name : null
-}
-
-output "model_armor_response_template_id" {
-  description = "Response-side Model Armor template ID"
-  value       = var.enable_model_armor ? module.model_armor[0].response_template_id : null
-}
-
-output "model_armor_response_template_name" {
-  description = "Response-side Model Armor template full resource name"
-  value       = var.enable_model_armor ? module.model_armor[0].response_template_name : null
-}
-
-output "model_armor_inspect_template_id" {
-  description = "DLP inspect template ID referenced by the response template's advanced SDP config (null when model_armor_sdp_enforcement = DISABLED)"
-  value       = var.enable_model_armor ? module.model_armor[0].inspect_template_id : null
-}
-
-output "model_armor_deidentify_template_id" {
-  description = "DLP de-identify template ID referenced by the response template's advanced SDP config (null when model_armor_sdp_enforcement = DISABLED)"
-  value       = var.enable_model_armor ? module.model_armor[0].deidentify_template_id : null
-}
-
-output "model_armor_service_account" {
-  description = "Service Extensions service account (gcp-sa-dep) used by the Agent Gateway to call Model Armor"
-  value       = var.enable_model_armor ? module.model_armor[0].service_account_email : null
-}
-
-output "model_armor_service_agent_email" {
-  description = "Model Armor service agent (gcp-sa-modelarmor) granted DLP read access (null when model_armor_sdp_enforcement = DISABLED)"
-  value       = var.enable_model_armor ? module.model_armor[0].model_armor_service_agent_email : null
-}
-
-output "model_armor_gemini_enterprise_template_name" {
-  description = "Full resource name of the Gemini Enterprise Model Armor template (for Discovery Engine REST API)"
-  value       = var.enable_model_armor && var.enable_model_armor_gemini_enterprise ? module.model_armor[0].gemini_enterprise_template_name : null
-}
-
-output "model_armor_vertex_ai_service_account" {
-  description = "AI Platform service agent email granted Model Armor access"
-  value       = var.enable_model_armor && var.enable_model_armor_vertex_ai ? module.model_armor[0].vertex_ai_service_account_email : null
-}
-
 # PSC Interface Outputs
 
 output "psc_interface_network_attachment_id" {

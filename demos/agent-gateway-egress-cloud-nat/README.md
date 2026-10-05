@@ -50,96 +50,204 @@ agent-gateway/
 
 ## Prerequisites
 
-- A Google Cloud project with billing enabled
-- `gcloud` (Cloud SDK)
-- `terraform` >= 1.5
-- [`skaffold`](https://skaffold.dev/) for image builds
-- Python 3.12+ with [`uv`](https://docs.astral.sh/uv/)
-- `envsubst` (gettext) and `jq` — Cloud Shell already has these
-- (Secure path only) A public DNS zone you own, used for the LB cert
+- A GCP project with billing enabled.
+- Your account must have `roles/owner` or equivalent (`roles/editor` +
+  `roles/iam.securityAdmin` + `roles/resourcemanager.projectIamAdmin` +
+  `roles/cloudbuild.builds.editor` + `roles/serviceusage.serviceUsageConsumer`).
+  - *Note on Cloud Build:* `roles/editor` does not grant permissions to create Cloud Build jobs. If you are not a Project Owner, run:
+    ```bash
+    export PROJECT_ID=YOUR_PROJECT_ID
+    export USER_EMAIL=$(gcloud config get-value account)
 
-## Quick start
+    gcloud projects add-iam-policy-binding "$PROJECT_ID" \
+      --member="user:$USER_EMAIL" \
+      --role="roles/cloudbuild.builds.editor"
 
-The full procedure with explanations lives in [`codelab.md`](codelab.md).
-Condensed:
+    gcloud projects add-iam-policy-binding "$PROJECT_ID" \
+      --member="user:$USER_EMAIL" \
+      --role="roles/serviceusage.serviceUsageConsumer"
+    ```
+    *(Alternatively, add your account to `platform_admin_members = ["user:you@example.com"]` in `terraform.tfvars`, and Terraform will manage these grants automatically.)*
+- Tools: `gcloud` (authenticated), `terraform >= 1.5`, `uv` (Python package manager).
+- The project must be under a GCP **organization** (required for Agent Identity
+  IAM principal sets).
+- **Bootstrap APIs:** In a new GCP project, the Cloud Resource Manager and Service Usage APIs must be enabled via `gcloud` before Terraform can read project metadata or manage services.
 
 ```bash
-export PROJECT_ID="<your-project-id>"
-export REGION="us-central1"
-# Secure path only:
-export DOMAIN_NAME="agw.example.com"
+gcloud auth login
+gcloud auth application-default login
+gcloud config set project YOUR_PROJECT_ID
+```
 
-# 1. Bootstrap APIs
+---
+
+## Deploy Walkthrough
+
+### Step 0 — Clone and navigate
+
+```bash
+cd cloud-networking-solutions/demos/agent-gateway-egress-swp/terraform
+```
+
+### Step 1 — Enable Bootstrap APIs
+
+In a new project, enable the foundational APIs required by Terraform and Cloud Storage:
+
+```bash
+export PROJECT_ID=$(gcloud config get-value project)
+export REGION=us-central1
+
 gcloud services enable \
-  compute.googleapis.com serviceusage.googleapis.com \
-  cloudresourcemanager.googleapis.com iam.googleapis.com \
-  storage.googleapis.com
+  cloudresourcemanager.googleapis.com \
+  serviceusage.googleapis.com \
+  storage.googleapis.com \
+  compute.googleapis.com \
+  iam.googleapis.com \
+  iap.googleapis.com \
+  dns.googleapis.com \
+  agentregistry.googleapis.com \
+  networkservices.googleapis.com \
+  networksecurity.googleapis.com \
+  networkconnectivity.googleapis.com \
+  --project="${PROJECT_ID}"
+```
 
-# 2. Create state bucket and configure backend
-gcloud storage buckets create gs://${PROJECT_ID}-tfstate \
-  --location=${REGION} --uniform-bucket-level-access
-cp terraform/example.backend.conf terraform/backend.conf
-# Edit backend.conf
+### Step 2 — Create the Terraform state bucket
 
-# 3. Configure Terraform variables
-cp terraform/example.tfvars terraform/terraform.tfvars
-# Edit terraform/terraform.tfvars (see codelab.md for the variable reference)
+```bash
+gcloud storage buckets create "gs://${PROJECT_ID}-tfstate" \
+  --location="${REGION}" \
+  --uniform-bucket-level-access
+```
 
-# 4. Deploy infrastructure
-cd terraform
+### Step 3 — Configure Terraform
+
+```bash
+cp example.backend.conf backend.conf
+# Edit backend.conf: set bucket = "${PROJECT_ID}-tfstate"
+
+cp example.tfvars terraform.tfvars
+# Edit terraform.tfvars:
+#   project_id      = "YOUR_PROJECT_ID"
+#   organization_id = "YOUR_ORG_NUMERIC_ID"   # gcloud organizations list
+#   region          = "us-central1"
+```
+
+Get the numeric org ID:
+```bash
+gcloud organizations list
+```
+
+### Step 4 — Phase 1 apply (infrastructure + MCP server)
+
+This creates all networking, SWP, Cloud NAT, the Agent Gateway, and the
+bug-tickets-mcp Cloud Run service. The Reasoning Engine is NOT created yet
+(`deploy_reasoning_engine` defaults to `false`).
+
+```bash
 terraform init -backend-config=backend.conf
 terraform plan
 terraform apply
-cd ..
-
-# 5. Render skaffold + cloudrun manifests. MCP_INGRESS comes from a
-#    Terraform output that mirrors enable_cloud_run_private_networking,
-#    so the rendered Cloud Run YAML stays in sync with Terraform state.
-export MCP_INGRESS=$(cd terraform && terraform output -raw mcp_cloud_run_ingress_annotation)
-envsubst '${PROJECT_ID} ${REGION} ${MCP_INGRESS}' < skaffold.yaml.tmpl > skaffold.yaml
-for f in cloudrun/*.yaml.tmpl; do
-  envsubst '${PROJECT_ID} ${REGION} ${MCP_INGRESS}' < "$f" > "${f%.tmpl}"
-done
-
-# 6. Build images and deploy MCP services
-gcloud projects add-iam-policy-binding ${PROJECT_ID} \
-  --member="user:$(gcloud config get-value account)" \
-  --role="roles/iam.serviceAccountUser"
-skaffold run
-
-# 7. Deploy the mortgage agent to Agent Runtime
-cd src/mortgage-agent
-uv sync
-uv run python deploy_agent.py \
-  --project=${PROJECT_ID} --region=${REGION} \
-  --enable-agent-identity --agent-name=mortgage-agent \
-  --agent-gateway=projects/${PROJECT_ID}/locations/${REGION}/agentGateways/agent-gateway \
-  --model-endpoint-location=global
-# Capture AGENT_ID from the output
-cd ../..
-
-# 8. Grant per-MCP egress IAM for the deployed agent
-./scripts/grant_agent_mcp_egress.sh \
-  --mcp \
-  --agent-id ${AGENT_ID} \
-  --mcp-filter "legacy-dms income-verification"
 ```
 
-## Test, register, clean up
+After apply, note these outputs:
+```bash
+terraform output nat_static_ip          # The IP the MCP server will see
+terraform output bug_tickets_mcp_url    # URL used in deploy_agent.py
+terraform output agent_gateway_id       # Used in --agent-gateway flag
+```
 
-- **Playground:** open the agent in the Agent Platform console and trigger a
-  prompt; verify in Cloud Trace.
-- **Gemini Enterprise:** register the agent in your GE app and chat through
-  the GE webapp.
-- **Cleanup:** `terraform destroy` (after deleting the deployed Reasoning
-  Engine first).
+> **Note:** The configuration to force all traffic to the VPC (`VPC_EGRESS_MODE_ALL_TRAFFIC`) requires an `AgentConnectivityTemplate` resource, which is not yet supported in the Google Terraform provider. The Terraform configuration in `modules/agent-gateway/main.tf` automatically handles creating, binding, unbinding, and deleting this template using `local-exec` provisioners under the hood.
 
-Each is covered in [`codelab.md`](codelab.md), including troubleshooting
-(gateway settle time, missing IAM, DNS peering, image tag conflicts).
+### Step 5 — Build and stage agent artifacts
 
-## Contributing
+From the agent source directory, build the artifact bundle and write the
+manifest that Terraform will reference in Phase 2.
 
-See [docs/CONTRIBUTING.md](docs/CONTRIBUTING.md).
+```bash
+cd ../src/software-bug-agent
+
+# Install dependencies (uv will create a venv automatically)
+uv sync
+
+# Stage agent artifacts to GCS and write build/agent_artifacts.json
+uv run python deploy_agent.py \
+  --project="${PROJECT_ID}" \
+  --region="${REGION}" \
+  --mcp-url="$(cd ../../terraform && terraform output -raw bug_tickets_mcp_url)" \
+  --build-only
+```
+
+The manifest is written to `../../build/agent_artifacts.json` (relative to this
+directory), which is the path `terraform/main.tf` expects by default.
+
+### Step 6 — Phase 2 apply (Reasoning Engine)
+
+```bash
+cd ../../terraform
+
+terraform apply -var deploy_reasoning_engine=true
+```
+
+This creates the `google_vertex_ai_reasoning_engine` with
+`agent_gateway_config.agent_to_anywhere_config.agent_gateway` bound, so ALL
+agent egress flows through the VPC → SWP → Cloud NAT path.
+
+```bash
+terraform output reasoning_engine_name  # full resource ID
+```
+
+---
+
+## Verification
+
+### 1. Confirm the static NAT IP
+
+The reserved external IP is visible in the GCP Console:
+**VPC Network > IP addresses > External IP addresses** — look for the address
+named `<name_prefix>-nat-ip`.
+
+```bash
+terraform output nat_static_ip
+```
+
+### 2. Send a test query to the agent
+
+Go to **Vertex AI > Agent Engine** in the GCP Console, select the deployed
+Reasoning Engine, and click **Test**. Send a prompt like:
+
+```
+List all open P1 bugs assigned to alice@quantumroast.example.
+```
+
+The agent will call `list_tickets` via MCPToolset, which makes an HTTP request
+from the Reasoning Engine container — through the Agent Gateway, the SWP, and
+Cloud NAT — to the Cloud Run MCP server.
+
+### 3. Verify the egress IP in Cloud Run logs
+
+The bug-tickets-mcp Cloud Run service logs every request. Check for calls to `/mcp`:
+
+```bash
+gcloud logging read \
+  'resource.type="cloud_run_revision" AND resource.labels.service_name="bug-tickets-mcp" AND textPayload:"/mcp"' \
+  --project="${PROJECT_ID}" \
+  --limit=10 \
+  --format="value(textPayload)"
+```
+
+You should see the incoming requests arriving from Cloud NAT. If requests are logged with `200 OK`, the egress path is confirmed end-to-end.
+
+## Cleanup
+
+```bash
+# 1. Destroy all Terraform-managed resources (automated teardown)
+cd terraform
+terraform destroy -var deploy_reasoning_engine=true
+
+# 2. (Optional) Delete the state bucket
+gcloud storage rm -r "gs://${PROJECT_ID}-tfstate"
+```
 
 ## License
 

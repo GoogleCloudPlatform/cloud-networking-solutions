@@ -71,13 +71,6 @@ resource "google_project_iam_member" "aiplatform_network_admin" {
   member  = "serviceAccount:${google_project_service_identity.aiplatform.email}"
 }
 
-resource "google_project_iam_member" "aiplatform_dns_peer" {
-  count   = var.enable_psc_interface ? 1 : 0
-  project = module.project.project_id
-  role    = "roles/dns.peer"
-  member  = "serviceAccount:${google_project_service_identity.aiplatform.email}"
-}
-
 # Allow time for the AI Platform service identity to propagate before
 # binding IAM roles to the Reasoning Engine service agent.
 resource "time_sleep" "aiplatform_identity_propagation" {
@@ -92,14 +85,6 @@ resource "google_project_iam_member" "aiplatform_re_network_admin" {
   count      = var.enable_psc_interface ? 1 : 0
   project    = module.project.project_id
   role       = "roles/compute.networkAdmin"
-  member     = "serviceAccount:service-${module.project.number}@gcp-sa-aiplatform-re.iam.gserviceaccount.com"
-  depends_on = [time_sleep.aiplatform_identity_propagation]
-}
-
-resource "google_project_iam_member" "aiplatform_re_dns_peer" {
-  count      = var.enable_psc_interface ? 1 : 0
-  project    = module.project.project_id
-  role       = "roles/dns.peer"
   member     = "serviceAccount:service-${module.project.number}@gcp-sa-aiplatform-re.iam.gserviceaccount.com"
   depends_on = [time_sleep.aiplatform_identity_propagation]
 }

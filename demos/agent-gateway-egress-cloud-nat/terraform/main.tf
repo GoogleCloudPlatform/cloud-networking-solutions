@@ -87,7 +87,7 @@ resource "google_storage_bucket" "cloudbuild" {
   name                        = coalesce(var.cloudbuild_bucket_name, "${var.project_id}_cloudbuild")
   location                    = var.region
   uniform_bucket_level_access = true
-  force_destroy               = false
+  force_destroy               = var.cloudbuild_bucket_force_destroy
 
   lifecycle_rule {
     condition {
@@ -147,48 +147,41 @@ resource "google_project_iam_member" "platform_admin_networkservices_viewer" {
   member   = each.value
 }
 
-module "model_armor" {
-  count  = var.enable_model_armor ? 1 : 0
-  source = "./modules/model-armor"
+resource "time_sleep" "cloudbuild_iam_propagation" {
+  create_duration = "30s"
 
-  project_id = var.project_id
-  region     = var.region
+  triggers = {
+    compute_sa_bucket    = google_storage_bucket_iam_member.cloudbuild_compute_sa.id
+    compute_sa_registry  = google_project_iam_member.cloudbuild_registry.id
+    service_agent_bucket = google_storage_bucket_iam_member.cloudbuild_service_agent.id
+  }
 
-  enable_model_armor   = var.enable_model_armor
-  request_template_id  = var.model_armor_request_template_id
-  response_template_id = var.model_armor_response_template_id
+  depends_on = [
+    google_project_iam_member.platform_admin_cloudbuild,
+    google_project_iam_member.platform_admin_serviceusage,
+  ]
+}
 
-  # Admin IAM
-  platform_admin_members = var.platform_admin_members
+# Phase 12: MCP Cloud Run services + per-service runtime SAs
+module "mcp_services" {
+  source = "./modules/mcp-cloud-run"
 
-  # RAI filters
-  rai_filters = var.model_armor_rai_filters
+  project_id              = var.project_id
+  region                  = var.region
+  services = {
+    for k, v in var.mcp_services : k => {
+      image              = local.mcp_image_uri[k]
+      container_port     = v.container_port
+      otel_service_name  = v.otel_service_name
+      min_instance_count = v.min_instance_count
+      max_instance_count = v.max_instance_count
+      cpu                = v.cpu
+      memory             = v.memory
+      env                = v.env
+    }
+  }
 
-  # Sensitive Data Protection
-  sdp_enforcement = var.model_armor_sdp_enforcement
-  pii_types       = var.model_armor_pii_types
-
-  # Prompt Injection & Jailbreak
-  pi_jailbreak_enforcement      = var.model_armor_pi_jailbreak_enforcement
-  pi_jailbreak_confidence_level = var.model_armor_pi_jailbreak_confidence
-
-  # Malicious URI
-  malicious_uri_enforcement = var.model_armor_malicious_uri_enforcement
-
-  # MCP Floor Setting
-  enable_mcp_floor_setting = var.enable_model_armor_mcp_floor_setting
-
-  # Vertex AI Integration
-  enable_vertex_ai_integration   = var.enable_model_armor_vertex_ai
-  vertex_ai_inspect_only         = var.model_armor_vertex_ai_inspect_only
-  vertex_ai_enable_cloud_logging = var.model_armor_vertex_ai_cloud_logging
-
-  # Gemini Enterprise Template
-  enable_gemini_enterprise_template   = var.enable_model_armor_gemini_enterprise
-  gemini_enterprise_template_id       = var.model_armor_gemini_enterprise_template_id
-  gemini_enterprise_template_location = var.model_armor_gemini_enterprise_location
-
-  depends_on = [module.foundation]
+  depends_on = [module.foundation, terraform_data.mcp_image, google_artifact_registry_repository.registry]
 }
 
 locals {
@@ -226,43 +219,6 @@ module "agent_engine" {
   ]
 
   depends_on = [module.foundation, module.agent_registry_endpoints]
-}
-
-resource "time_sleep" "cloudbuild_iam_propagation" {
-  create_duration = "30s"
-
-  triggers = {
-    compute_sa_bucket    = google_storage_bucket_iam_member.cloudbuild_compute_sa.id
-    compute_sa_registry  = google_project_iam_member.cloudbuild_registry.id
-    service_agent_bucket = google_storage_bucket_iam_member.cloudbuild_service_agent.id
-  }
-
-  depends_on = [
-    google_project_iam_member.platform_admin_cloudbuild,
-    google_project_iam_member.platform_admin_serviceusage,
-  ]
-}
-
-# Phase 12: MCP Cloud Run services + per-service runtime SAs
-module "mcp_services" {
-  source = "./modules/mcp-cloud-run"
-
-  project_id              = var.project_id
-  region                  = var.region
-  services = {
-    for k, v in var.mcp_services : k => {
-      image              = local.mcp_image_uri[k]
-      container_port     = v.container_port
-      otel_service_name  = v.otel_service_name
-      min_instance_count = v.min_instance_count
-      max_instance_count = v.max_instance_count
-      cpu                = v.cpu
-      memory             = v.memory
-      env                = v.env
-    }
-  }
-
-  depends_on = [module.foundation, terraform_data.mcp_image, google_artifact_registry_repository.registry]
 }
 
 # Discovery Engine Admin — Allow user to manage Gemini Enterprise / Discovery Engine

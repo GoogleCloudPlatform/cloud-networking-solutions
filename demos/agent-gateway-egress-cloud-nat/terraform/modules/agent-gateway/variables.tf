@@ -53,8 +53,8 @@ variable "agent_gateway_subnet_cidr" {
   type        = string
 }
 
-variable "mcp_lb_target_port" {
-  description = "TCP port on the MCP internal LB that the Agent Gateway PSC-I needs to reach"
-  type        = number
-  default     = 443
+variable "template_name" {
+  description = "Name of the Agent Connectivity Template to create and link"
+  type        = string
+  default     = null
 }
