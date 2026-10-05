@@ -59,12 +59,37 @@ resource "google_compute_global_address" "external" {
   name = "self-managed-ingress-ip"
 }
 
+resource "google_compute_target_https_proxy" "external" {
+  provider = google.consumer
+  project  = var.consumer_project_id
+
+  name    = "self-managed-ingress-https-proxy"
+  url_map = google_compute_url_map.external.id
+
+  ssl_certificates = [
+    google_compute_ssl_certificate.demo.id
+  ]
+}
+
 resource "google_compute_target_http_proxy" "external" {
   provider = google.consumer
   project  = var.consumer_project_id
 
   name    = "self-managed-ingress-http-proxy"
   url_map = google_compute_url_map.external.id
+}
+
+resource "google_compute_global_forwarding_rule" "external_https" {
+  provider = google.consumer
+  project  = var.consumer_project_id
+
+  name                  = "self-managed-ingress-https"
+  load_balancing_scheme = "EXTERNAL_MANAGED"
+
+  ip_address = google_compute_global_address.external.id
+  port_range = "443"
+
+  target = google_compute_target_https_proxy.external.id
 }
 
 resource "google_compute_global_forwarding_rule" "external_http" {
