@@ -110,3 +110,25 @@ resource "google_compute_region_backend_service" "vertex_ai" {
     group = google_compute_region_network_endpoint_group.vertex_ai_psc_neg.id
   }
 }
+
+# -----------------------------------------------------------------------------
+# Tier 2 - Service Attachments
+# -----------------------------------------------------------------------------
+
+resource "google_compute_service_attachment" "tier2" {
+  provider = google.producer
+  project  = var.producer_project_id
+  region   = var.region
+
+  name = "self-managed-ingress-service"
+
+  target_service = google_compute_forwarding_rule.internal_lb.id
+
+  connection_preference = "ACCEPT_AUTOMATIC"
+
+  nat_subnets = [
+    google_compute_subnetwork.producer_psc_nat.id
+  ]
+
+  enable_proxy_protocol = false
+}

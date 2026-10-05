@@ -25,3 +25,11 @@ output "producer_psc_nat_subnet" {
 output "vertex_ai_psc_neg_id" {
   value = google_compute_region_network_endpoint_group.vertex_ai_psc_neg.id
 }
+
+output "tier2_service_attachment" {
+  value = google_compute_service_attachment.tier2.id
+}
+
+output "external_lb_ip" {
+  value = google_compute_global_address.external.address
+}
