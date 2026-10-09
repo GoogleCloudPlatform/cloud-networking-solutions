@@ -128,3 +128,8 @@ output "agent_connectivity_template_name" {
   description = "Dynamic name of the Agent Connectivity Template used by the Agent Gateway."
   value       = module.agent_gateway.template_name
 }
+
+output "agent_connectivity_template_id" {
+  description = "Full resource ID of the Agent Connectivity Template used by the Agent Gateway."
+  value       = module.agent_gateway.template_id
+}

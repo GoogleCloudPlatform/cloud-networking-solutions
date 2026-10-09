@@ -102,6 +102,35 @@ resource "google_compute_firewall" "agent_gateway_psc_i" {
   }
 }
 
+# Agent Connectivity Template (ALL_TRAFFIC) enforcing egress through the customer VPC PSC-I Network Attachment.
+resource "google_network_services_agent_connectivity_template" "agent_connectivity_template" {
+  project                        = var.project_id
+  location                       = var.region
+  agent_connectivity_template_id = local.template_name
+  description                    = "Agent Connectivity Template enforcing ALL_TRAFFIC egress via Customer VPC PSC-I Network Attachment"
+  access_path                    = "AGENT_TO_ANYWHERE"
+
+  egress_network_config {
+    network_attachment = google_compute_network_attachment.agent_gateway.id
+    vpc_egress         = "ALL_TRAFFIC"
+  }
+
+  # Ensure deploymentModel is CENTRALIZED via v1 REST API.
+  # The Google provider (<= 8.6.0) does not yet expose deployment_model on this resource.
+  # Without CENTRALIZED, the template defaults to unspecified, causing the Agent Gateway's
+  # tenant orchestrator to hang for 18 minutes and fail with Code 13 internal error.
+  provisioner "local-exec" {
+    command = <<-EOT
+      TOKEN=$(gcloud auth print-access-token)
+      curl -s -X PATCH \
+        -H "Authorization: Bearer $${TOKEN}" \
+        -H "Content-Type: application/json" \
+        "https://networkservices.googleapis.com/v1/projects/${var.project_id}/locations/${var.region}/agentConnectivityTemplates/${local.template_name}?updateMask=deploymentModel" \
+        -d '{"deploymentModel": "CENTRALIZED"}' > /dev/null || true
+    EOT
+  }
+}
+
 # The Agent Gateway itself. Linked to the Agent Connectivity Template (ALL_TRAFFIC) via v1 REST API.
 resource "terraform_data" "agent_gateway" {
   input = {
@@ -109,7 +138,7 @@ resource "terraform_data" "agent_gateway" {
     project_number        = var.project_number
     region                = var.region
     agent_gateway_name    = var.name
-    template_name         = local.template_name
+    template_name         = google_network_services_agent_connectivity_template.agent_connectivity_template.agent_connectivity_template_id
     network_attachment_id = google_compute_network_attachment.agent_gateway.id
     registry_uri          = local.registry_uri
   }
@@ -119,8 +148,6 @@ resource "terraform_data" "agent_gateway" {
     command = <<-EOT
       set -e
       cd ..
-      echo "Creating Agent Connectivity Template with ALL_TRAFFIC..."
-      ./scripts/create_connectivity_template.sh "${self.input.project_id}" "${self.input.region}" "${self.input.template_name}" "${self.input.network_attachment_id}" "none"
 
       echo "Creating Agent Gateway via v1 REST API..."
       ./scripts/manage_agent_gateway.sh create "${self.input.project_id}" "${self.input.region}" "${self.input.agent_gateway_name}" "${self.input.template_name}" "${self.input.registry_uri}"
@@ -169,16 +196,14 @@ EOF
 
       echo "Deleting Agent Gateway via v1 REST API..."
       ./scripts/manage_agent_gateway.sh delete "${self.input.project_id}" "${self.input.region}" "${self.input.agent_gateway_name}" || true
-
-      echo "Deleting Agent Connectivity Template..."
-      ./scripts/delete_connectivity_template.sh "${self.input.project_id}" "${self.input.region}" "${self.input.template_name}" || true
     EOT
   }
 
   depends_on = [
     google_compute_network_attachment.agent_gateway,
     google_compute_firewall.agent_gateway_psc_i,
-    terraform_data.network_attachment_drain
+    terraform_data.network_attachment_drain,
+    google_network_services_agent_connectivity_template.agent_connectivity_template
   ]
 }
 
