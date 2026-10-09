@@ -50,5 +50,10 @@ output "wait_for_gateway_id" {
 
 output "template_name" {
   description = "Dynamic name of the Agent Connectivity Template linked to the gateway"
-  value       = local.template_name
+  value       = google_network_services_agent_connectivity_template.agent_connectivity_template.agent_connectivity_template_id
+}
+
+output "template_id" {
+  description = "Full resource ID of the Agent Connectivity Template linked to the gateway"
+  value       = google_network_services_agent_connectivity_template.agent_connectivity_template.id
 }

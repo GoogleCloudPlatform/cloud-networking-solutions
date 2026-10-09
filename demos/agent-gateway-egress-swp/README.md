@@ -85,7 +85,7 @@ The demo has **two distinct egress paths** from the Reasoning Engine:
 | **Agent Gateway** | `AGENT_TO_ANYWHERE` gateway terminates PSC-I and injects traffic into the Agent Gateway subnet | `terraform_data.agent_gateway` in `modules/agent-gateway/main.tf` |
 | **Agent Gateway Authz Policy** | Overrides the gateway's internal default-deny behavior and allows all traffic to flow to the customer VPC | `terraform_data.agent_gateway` in `modules/agent-gateway/main.tf` |
 | **Agent Registry Endpoints** | Registers Google APIs and the MCP server, enabling the Gateway to build its dynamic routing table | `module.agent_registry_endpoints` in `terraform/main.tf` |
-| **Agent Connectivity Template** | Forces all traffic (including DNS) from the Reasoning Engine to exit through the VPC via `ALL_TRAFFIC` mode | API scripts triggered by `terraform_data` in `modules/agent-gateway/main.tf` |
+| **Agent Connectivity Template** | Forces all traffic (including DNS) from the Reasoning Engine to exit through the VPC via `ALL_TRAFFIC` mode | `google_network_services_agent_connectivity_template` in `modules/agent-gateway/main.tf` |
 | **Private Google Access** | Enabled on the Agent Gateway subnet so Google API traffic can exit internally without NAT | `private_ip_google_access = true` on `google_compute_subnetwork.agent_gateway` in `modules/networking/main.tf` |
 | **DNS override (googleapis)** | Private Cloud DNS zones natively intercept and redirect `*.googleapis.com` to the `private.googleapis.com` VIP (`199.36.153.8/30`) | `google_dns_managed_zone.googleapis` in `modules/networking/main.tf` |
 | **Policy-Based Route (googleapis bypass)** | Priority 1500 — lets traffic destined for `199.36.153.8/30` take the default route (Private Google Access), bypassing the SWP | `google_network_connectivity_policy_based_route.googleapis_restricted_bypass` in `modules/secure-web-proxy/main.tf` |
@@ -167,6 +167,7 @@ gcloud services enable \
   iap.googleapis.com \
   dns.googleapis.com \
   agentregistry.googleapis.com \
+  certificatemanager.googleapis.com \
   networkservices.googleapis.com \
   networksecurity.googleapis.com \
   networkconnectivity.googleapis.com \
@@ -206,7 +207,7 @@ bug-tickets-mcp Cloud Run service. The Reasoning Engine is NOT created yet
 (`deploy_reasoning_engine` defaults to `false`).
 
 ```bash
-terraform init -backend-config=backend.conf
+terraform init -upgrade -backend-config=backend.conf
 terraform plan
 terraform apply
 ```
@@ -218,7 +219,7 @@ terraform output bug_tickets_mcp_url    # URL used in deploy_agent.py
 terraform output agent_gateway_id       # Used in --agent-gateway flag
 ```
 
-> **Note:** The configuration to force all traffic to the VPC (`VPC_EGRESS_MODE_ALL_TRAFFIC`) requires an `AgentConnectivityTemplate` resource, which is not yet supported in the Google Terraform provider. The Terraform configuration in `modules/agent-gateway/main.tf` automatically handles creating, binding, unbinding, and deleting this template using `local-exec` provisioners under the hood.
+> **Note:** The configuration to force all traffic to the customer VPC (`VPC_EGRESS_MODE_ALL_TRAFFIC`) uses the official `google_network_services_agent_connectivity_template` resource in `modules/agent-gateway/main.tf`. The template is automatically managed by Terraform and linked to the Agent Gateway, enforcing `ALL_TRAFFIC` egress via the PSC-Interface Network Attachment.
 
 ### Step 5 — Build and stage agent artifacts
 
@@ -372,18 +373,13 @@ must be **/26 or larger**. A /28 is too small for PSC-Interface to allocate
 endpoints. If you change the default, do not use a prefix length larger than 26
 (e.g. /27, /28).
 
-### AgentConnectivityTemplate teardown & pre-GA reference retention
+### AgentConnectivityTemplate teardown & reference retention
 
-When an `AgentGateway` is deleted, Google Cloud's internal Network Services control plane retains a tombstone reference on the associated `AgentConnectivityTemplate` until background garbage collection purges it. Attempting to delete the template immediately via `delete_connectivity_template.sh` returns:
-`400 FAILED_PRECONDITION: Resource is already being used by resource(s) agentGateways/agent-gateway`.
+When an `AgentGateway` is deleted, Google Cloud's internal Network Services control plane briefly retains a reference on the associated `AgentConnectivityTemplate` until background cleanup unbinds it.
 
+- **Automated Provider Retries:** The Terraform provider's `google_network_services_agent_connectivity_template` resource natively handles this via built-in retry predicates (`IsAgentConnectivityTemplateInUse`), retrying the deletion operation automatically until the control plane releases the reference.
+- **Dynamic Naming (`random_id`):** Each deployment generates a unique template name (`random_id.template_suffix`), ensuring that consecutive deploy/destroy cycles never collide with residual references.
 - **Zero Cost:** An idle `AgentConnectivityTemplate` is purely metadata and carries **zero cost ($0.00)**.
-- **Zero Impact on Re-apply:** It does not block subsequent `terraform apply` runs — `create_connectivity_template.sh` detects the existing template and binds the new gateway to it seamlessly.
-- **Delayed Cleanup:** Once Google's background reaper purges the deleted gateway's tombstone reference, you can delete the template at any time with:
-  ```bash
-  gcloud alpha network-services agent-connectivity-templates delete cuj2-template \
-    --location=us-central1 --project=YOUR_PROJECT_ID --quiet
-  ```
 
 ### Only one ACTIVE REGIONAL_MANAGED_PROXY subnet per region per VPC
 
