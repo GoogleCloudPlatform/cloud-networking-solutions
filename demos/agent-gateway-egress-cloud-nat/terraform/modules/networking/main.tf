@@ -29,7 +29,7 @@ data "google_compute_zones" "available" {
 
 # VPC Network
 module "vpc" {
-  source       = "github.com/GoogleCloudPlatform/cloud-foundation-fabric//modules/net-vpc?ref=v55.3.0"
+  source       = "github.com/GoogleCloudPlatform/cloud-foundation-fabric//modules/net-vpc?ref=v59.0.0"
   project_id   = var.project_id
   name         = var.vpc_name
   routing_mode = "REGIONAL"

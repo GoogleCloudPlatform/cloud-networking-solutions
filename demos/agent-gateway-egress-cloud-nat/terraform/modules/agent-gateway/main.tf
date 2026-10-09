@@ -85,13 +85,6 @@ resource "google_network_services_agent_gateway" "this" {
   registries = [local.registry_uri]
 
   agent_connectivity_template = "projects/${var.project_number}/locations/us-central1/agentConnectivityTemplates/${google_network_services_agent_connectivity_template.gateway_template.agent_connectivity_template_id}"
-
-  ## Commenting this since we are using agent_connectivity_template
-  # network_config {
-  #   egress {
-  #     network_attachment = google_compute_network_attachment.agent_gateway_na.id
-  #   }
-  # }
 }
 
 resource "google_network_services_agent_connectivity_template" "gateway_template" {
