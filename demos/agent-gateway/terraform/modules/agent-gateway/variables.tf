@@ -67,12 +67,6 @@ variable "model_armor_response_template_id" {
   default     = null
 }
 
-variable "model_armor_authz_hosts" {
-  description = "Optional list of Host header values to scope the Model Armor CONTENT_AUTHZ policy to. Hosts match exact strings, so callers must include every Host value the agent might send — including BOTH Cloud Run URL forms when targeting Cloud Run services directly: the hash form `<svc>-<hash>-<region-abbrev>.a.run.app` AND the project-number form `<svc>-<project-number>.<region>.run.app`. Either URL routes to the same service, but a host missing from this list bypasses Model Armor / SDP. When empty, the policy applies to all gateway traffic. When non-empty, http_rules.to.operations.hosts is generated with one exact-match entry per element."
-  type        = list(string)
-  default     = []
-}
-
 variable "authz_extension_timeout" {
   description = "gRPC call timeout for the authz extensions (string format e.g. \"1s\")"
   type        = string

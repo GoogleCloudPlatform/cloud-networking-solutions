@@ -19,11 +19,13 @@ terraform {
   required_providers {
     google = {
       source  = "hashicorp/google"
-      version = ">= 7.16.0"
+      version = ">= 7.40.0"
     }
     google-beta = {
-      source  = "hashicorp/google-beta"
-      version = ">= 7.16.0"
+      source = "hashicorp/google-beta"
+      # 7.40.0 adds google_vertex_ai_reasoning_engine deployment_spec
+      # agent_gateway_config (google-beta only).
+      version = ">= 7.40.0"
     }
   }
 }

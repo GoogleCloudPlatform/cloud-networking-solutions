@@ -23,3 +23,22 @@ output "agent_mcp_invoker_email" {
   description = "Email of the SA agents impersonate when invoking MCP Cloud Run services. Pass this to the mcp-cloud-run module's invoker_sa_email and to the agent runtime as MCP_INVOKER_SA_EMAIL."
   value       = google_service_account.agent_mcp_invoker.email
 }
+
+output "reasoning_engine_name" {
+  description = "Full resource name of the deployed reasoning engine (projects/.../reasoningEngines/<id>), or null when deploy_reasoning_engine is false."
+  value       = var.deploy_reasoning_engine ? google_vertex_ai_reasoning_engine.mortgage[0].name : null
+}
+
+output "agent_engine_identity" {
+  description = "Per-agent identity principal for the deployed reasoning engine, used as the member for per-agent roles/iap.egressor MCP bindings. Null when deploy_reasoning_engine is false."
+  value = (
+    var.deploy_reasoning_engine
+    ? "principal://agents.global.org-${var.organization_id}.system.id.goog/resources/aiplatform/projects/${var.project_number}/locations/${var.region}/reasoningEngines/${basename(google_vertex_ai_reasoning_engine.mortgage[0].name)}"
+    : null
+  )
+}
+
+output "agent_engine_effective_identity" {
+  description = "The identity reported by the reasoning engine itself (spec.effective_identity). Exposed to cross-check against the constructed agent_engine_identity. Null when deploy_reasoning_engine is false."
+  value       = var.deploy_reasoning_engine ? google_vertex_ai_reasoning_engine.mortgage[0].spec[0].effective_identity : null
+}

@@ -22,23 +22,19 @@ variable "location" {
   type        = string
 }
 
-variable "google_apis" {
-  description = "Map of Google API IDs to their display names to register with all regional/mtls variants"
-  type        = map(string)
-  default = {
-    aiplatform             = "Vertex AI Platform"
-    cloudresourcemanager   = "Cloud Resource Manager"
-    global-discoveryengine = "Global Discovery Engine"
-    discoveryengine        = "Discovery Engine"
-    logging                = "Logging"
-    monitoring             = "Monitoring"
-    oauth2                 = "OAuth2"
-    telemetry              = "Telemetry"
-    trace                  = "Trace"
-    agentregistry          = "Agent Registry"
-    iap                    = "Identity-Aware Proxy"
-    iamcredentials         = "IAM Credentials"
-  }
+variable "google_api_endpoints" {
+  description = "Google API endpoint URLs registered as interfaces under a single \"googleapis\" Agent Registry service. A \"{region}\" token is replaced with var.location."
+  type        = list(string)
+  default = [
+    "https://agentregistry.googleapis.com",
+    "https://aiplatform.mtls.googleapis.com",
+    "https://cloudresourcemanager.mtls.googleapis.com",
+    "https://iamcredentials.mtls.googleapis.com",
+    "https://telemetry.mtls.googleapis.com",
+    "https://{region}-aiplatform.mtls.googleapis.com",
+    "https://{region}-aiplatform.googleapis.com",
+    "https://aiplatform.{region}.rep.googleapis.com",
+  ]
 }
 
 variable "custom_services" {
@@ -88,4 +84,26 @@ variable "mcp_service_urls" {
   description = "Map of MCP service name -> *.run.app URL. Pass module.mcp_services.service_urls. Required when mcp_url_mode = 'cloud_run'; must contain a URL for every key in mcp_servers."
   type        = map(string)
   default     = {}
+}
+
+variable "iap_egressor_members" {
+  description = "Principals granted roles/iap.egressor on each registered endpoint (the NO_SPEC google_apis and custom services). Typically the Agent Identity principalSet. Empty disables the bindings."
+  type        = list(string)
+  default     = []
+}
+
+variable "mcp_egressor_members" {
+  description = "Principals granted roles/iap.egressor on each registered MCP server. Typically the per-agent identity of the deployed reasoning engine. Empty disables the MCP bindings."
+  type        = list(string)
+  default     = []
+}
+
+variable "mcp_egressor_conditions" {
+  description = "Optional IAM condition per MCP server (keyed by service_id) applied to that server's egressor binding, e.g. restricting corporate-email to read-only tools. Servers absent from the map get an unconditional binding."
+  type = map(object({
+    expression  = string
+    title       = string
+    description = optional(string)
+  }))
+  default = {}
 }

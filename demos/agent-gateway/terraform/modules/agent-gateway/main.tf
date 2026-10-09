@@ -20,9 +20,9 @@
  * authz service extensions (IAP REQUEST_AUTHZ and Model Armor CONTENT_AUTHZ),
  * and the authz policies that bind those extensions to the gateway.
  *
- * Per-MCP-server `roles/iap.egressor` bindings (the grants IAP REQUEST_AUTHZ
- * actually evaluates) are issued out-of-band by `scripts/grant_agent_mcp_egress.sh`
- * after each agent deploy.
+ * Per-endpoint `roles/iap.egressor` bindings (the grants IAP REQUEST_AUTHZ
+ * actually evaluates) are managed declaratively in the agent-registry-endpoints
+ * module via `google_iap_agent_registry_endpoint_iam_member`.
  *
  * The Agent Gateway resource is GA (uses the default google provider). The authz
  * service extensions and policies remain beta — pinned via the google-beta provider.
@@ -43,6 +43,53 @@ resource "google_compute_network_attachment" "agent_gateway" {
   subnetworks           = [var.agent_gateway_subnet_self_link]
 }
 
+# Destroy-time drain gate for the network attachment above.
+#
+# Terraform already tears these down in the right order — the gateway references
+# the attachment, so the gateway is deleted first. The problem is that the Agent
+# Gateway's DELETE returns as soon as the control-plane record is gone, while the
+# tenant-side PSC-Interface endpoint it attached is removed asynchronously a few
+# minutes later. Terraform deletes the attachment inside that window and compute
+# rejects it:
+#
+#   Error 412: Network Attachment with connected endpoints cannot be deleted.
+#
+# Nothing is actually wrong; the endpoint clears on its own. This node exists
+# only to hold the attachment's delete until connectedEndpoints is empty. It sits
+# between the two in the graph (gateway -> drain -> attachment), so on destroy it
+# runs after the gateway is gone and before the attachment is touched. Note that
+# connectedEndpoints reads as empty while the gateway is merely idle, so this
+# cannot be checked at plan time — the endpoint only shows up during teardown.
+#
+# Best-effort by design: on timeout it exits 0 and lets the delete attempt
+# proceed, which is exactly today's behaviour, and a re-run finishes the job.
+# Destroy provisioners cannot read variables, hence the values stashed in `input`.
+resource "terraform_data" "network_attachment_drain" {
+  input = {
+    project = var.project_id
+    region  = var.region
+    name    = google_compute_network_attachment.agent_gateway.name
+  }
+
+  provisioner "local-exec" {
+    when    = destroy
+    command = <<-EOT
+      echo "Waiting for PSC endpoints to detach from ${self.input.name} before deleting it..."
+      for _ in $(seq 1 60); do
+        endpoints=$(gcloud compute network-attachments describe "${self.input.name}" \
+          --project "${self.input.project}" --region "${self.input.region}" \
+          --format='value(connectedEndpoints[].pscConnectionId)' 2>/dev/null) || exit 0
+        if [ -z "$endpoints" ]; then
+          echo "No connected endpoints remain; proceeding with delete."
+          exit 0
+        fi
+        sleep 10
+      done
+      echo "Endpoints still attached after 10m; attempting the delete anyway." >&2
+    EOT
+  }
+}
+
 # Allow the gateway tenant's PSC-I NIC (sourcing from the dedicated subnet) to
 # reach the MCP internal LB on its front-end port.
 resource "google_compute_firewall" "agent_gateway_psc_i" {
@@ -61,6 +108,11 @@ resource "google_compute_firewall" "agent_gateway_psc_i" {
 
 # The Agent Gateway itself. Google-managed, AGENT_TO_ANYWHERE.
 resource "google_network_services_agent_gateway" "this" {
+  # The network_attachment reference below already creates an edge to the
+  # attachment. This adds the edge to the drain gate, which is what puts the
+  # destroy-time wait between deleting this gateway and deleting the attachment.
+  depends_on = [terraform_data.network_attachment_drain]
+
   project  = var.project_id
   name     = var.name
   location = var.region
@@ -188,9 +240,10 @@ resource "google_network_security_authz_policy" "iap" {
 
 # Bind the Model Armor authz extension to the Agent Gateway. CONTENT_AUTHZ
 # profile streams body events to the extension for content sanitization.
-# When model_armor_authz_hosts is non-empty, scope the policy to the listed
-# Host header values via http_rules; otherwise the policy applies to all
-# gateway traffic.
+# No http_rules are set, so the policy applies to ALL traffic through the
+# gateway — every agent egress hop (Vertex AI, Agent Registry, storage) is
+# content-inspected, not just the MCP service hosts. Add an http_rules block
+# scoping `to.operations.hosts` if that breadth ever needs narrowing.
 # Serialized after the IAP authz policy: both policies attach to the same Agent
 # Gateway, and the gateway backend allows only one mutating operation at a time
 # (concurrent creates fail with code 10 "another ongoing operation for the same
@@ -212,22 +265,6 @@ resource "google_network_security_authz_policy" "model_armor" {
   custom_provider {
     authz_extension {
       resources = [google_network_services_authz_extension.model_armor[0].id]
-    }
-  }
-
-  dynamic "http_rules" {
-    for_each = length(var.model_armor_authz_hosts) > 0 ? [1] : []
-    content {
-      to {
-        operations {
-          dynamic "hosts" {
-            for_each = var.model_armor_authz_hosts
-            content {
-              exact = hosts.value
-            }
-          }
-        }
-      }
     }
   }
 }

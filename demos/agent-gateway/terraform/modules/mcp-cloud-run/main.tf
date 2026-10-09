@@ -120,16 +120,18 @@ resource "google_cloud_run_v2_service" "mcp" {
     percent = 100
   }
 
-  # Skaffold (and the underlying gcloud/Cloud Run client) owns deploy-time
-  # mutations after the initial apply: container image tags, the per-revision
-  # `run-id` label that Cloud Run auto-injects into template[0].labels, and
-  # client identity annotations (run.googleapis.com/client-name, /client-version).
-  # Ignoring these prevents Terraform from reverting Skaffold's deploys.
+  # Terraform owns the container image: `var.services[*].image` carries the tag
+  # Cloud Build pushed during this apply (see terraform/images.tf), so drift is
+  # corrected rather than ignored.
+  #
+  # Cloud Run itself still mutates the rest on every deploy — the per-revision
+  # `run-id` label it auto-injects into template[0].labels, and the client
+  # identity annotations (run.googleapis.com/client-name, /client-version).
+  # Those stay ignored or every plan shows phantom diffs.
   lifecycle {
     ignore_changes = [
       client,
       client_version,
-      template[0].containers[0].image,
       template[0].labels,
       template[0].annotations,
     ]
@@ -142,7 +144,7 @@ resource "google_cloud_run_v2_service" "mcp" {
 # caller. `allUsers` is intentionally not granted: MCP services are unreachable
 # except by holders of an OIDC token for the invoker SA, regardless of
 # `private_networking`. Per-agent authorization is still enforced upstream at
-# the Agent Gateway via `roles/iap.egressor` (see scripts/grant_agent_mcp_egress.sh).
+# the Agent Gateway via `roles/iap.egressor`.
 #
 # When `invoker_sa_email` is null (e.g. the agent-engine module is disabled),
 # no binding is created and Cloud Run is unreachable until invoker is granted

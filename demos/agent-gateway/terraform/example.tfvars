@@ -95,24 +95,26 @@ mcp_lb_protocol = "HTTPS"
 # Cloud Run service name AND the URL-mask token (e.g. legacy-dms ->
 # legacy-dms.${mcp_internal_dns_zone.domain}). Adding a new service is a Cloud
 # Run deploy plus one entry in this map (a DNS A record is added automatically).
-# The `us-docker.pkg.dev/cloudrun/container/placeholder` image is a Google-
-# provided stub; replace with your own image in Artifact Registry before the
-# service handles real traffic (Skaffold deploys overwrite the image tag).
+# `source_dir` names the directory under src/ holding the Dockerfile; it is not
+# always the map key (income-verification builds from src/income-verification-api).
+# `terraform apply` builds and pushes each image via Cloud Build, tagging it with
+# a hash of its source. Set `image` on a service to pin a prebuilt tag instead
+# and skip that build.
 # min_instance_count = 1 keeps one warm instance per service. MCP tools/list
 # runs at the start of every agent turn with a 5s initialize() timeout; a
 # scale-to-zero cold start (~16-19s observed) trips that timeout and drops all
 # MCP tools for the request. Set to 0 if you don't mind cold-start failures.
 mcp_services = {
   legacy-dms = {
-    image              = "us-docker.pkg.dev/cloudrun/container/placeholder"
+    source_dir         = "legacy-dms"
     min_instance_count = 1
   }
   corporate-email = {
-    image              = "us-docker.pkg.dev/cloudrun/container/placeholder"
+    source_dir         = "corporate-email"
     min_instance_count = 1
   }
   income-verification = {
-    image              = "us-docker.pkg.dev/cloudrun/container/placeholder"
+    source_dir         = "income-verification-api"
     min_instance_count = 1
   }
 }
@@ -155,6 +157,34 @@ model_armor_sdp_enforcement = "ENABLED"
 
 # Enable Vertex AI Agent Engine infrastructure (IAM, networking)
 enable_agent_engine = true
+
+# Optional: let Terraform own the mortgage agent's reasoning engine (and the
+# per-agent MCP-server egressor grants) instead of deploying it imperatively
+# with src/mortgage-agent/deploy_agent.py. Requires enable_agent_gateway.
+#
+# Two-phase, because a reasoning engine deploys from prebuilt artifacts: apply
+# once with this false, then stage the artifacts and re-apply with it true.
+#   cd src/mortgage-agent
+#   uv run python deploy_agent.py --build-only --project=... --region=...
+# deploy_reasoning_engine = true
+
+# Optional: path to the manifest written by `deploy_agent.py --build-only`.
+# Defaults to ../build/agent_artifacts.json, i.e. exactly where that command
+# puts it, so you normally don't need to set this.
+# agent_artifacts_manifest_path = "../build/agent_artifacts.json"
+
+# Optional: bucket the build-only artifacts were staged to. The manifest is
+# deliberately bucket-free, so Terraform rebuilds the gs:// URIs itself using
+# the same default as the script (gs://<project_id>-staging). Only set this if
+# you passed --staging-bucket to deploy_agent.py; the two must agree.
+# agent_staging_bucket = "gs://my-agent-staging"
+
+# Optional: agent runtime settings (env MODEL_NAME / GOOGLE_CLOUD_LOCATION).
+# model_endpoint_location is intentionally decoupled from var.region;
+# "global" targets the global Gemini endpoint.
+# agent_model             = "gemini-3.5-flash-lite"
+# model_endpoint_location = "global"
+# agent_display_name      = "Mortgage Assistant Agent"
 
 # ==============================================================================
 # PSC INTERFACE - Private Service Connect for Agent Engine
@@ -238,23 +268,19 @@ enable_run_app_psc = false
 # Enable the Agent Registry endpoint provisioner
 enable_agent_registry_endpoints = true
 
-# Optional: Override the default list of Google APIs to register. Map key is
-# the service short name; value is the human-readable display name surfaced in
-# the Agent Registry UI.
-agent_registry_google_apis = {
-  aiplatform           = "Vertex AI Platform"
-  cloudresourcemanager = "Cloud Resource Manager"
-  discoveryengine      = "Discovery Engine"
-  logging              = "Logging"
-  monitoring           = "Monitoring"
-  oauth2               = "OAuth2"
-  telemetry            = "Telemetry"
-  trace                = "Trace"
-  agentregistry        = "Agent Registry"
-  iap                  = "Identity-Aware Proxy"
-  modelarmor           = "Model Armor"
-  iamcredentials       = "IAM Credentials"
-}
+# Optional: Override the default list of Google API endpoints to register. Each
+# entry registers one exact hostname (no automatic variant expansion). A
+# "{region}" token in id or url is replaced with var.region.
+agent_registry_endpoints = [
+  "https://agentregistry.googleapis.com",
+  "https://aiplatform.mtls.googleapis.com",
+  "https://cloudresourcemanager.mtls.googleapis.com",
+  "https://iamcredentials.mtls.googleapis.com",
+  "https://telemetry.mtls.googleapis.com",
+  "https://{region}-aiplatform.mtls.googleapis.com",
+  "https://{region}-aiplatform.googleapis.com",
+  "https://aiplatform.{region}.rep.googleapis.com",
+]
 
 # Optional: Override or add custom (non-Google) services to register
 agent_registry_custom_services = [
