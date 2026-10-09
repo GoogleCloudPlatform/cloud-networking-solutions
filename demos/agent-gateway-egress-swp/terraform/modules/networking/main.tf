@@ -30,7 +30,7 @@
 # VPC Network — primary subnet only; no proxy-only or PSC subnets here.
 # The SWP module adds its own proxy-only subnet for SWP next-hop routing.
 module "vpc" {
-  source       = "github.com/GoogleCloudPlatform/cloud-foundation-fabric//modules/net-vpc?ref=v55.3.0"
+  source       = "github.com/GoogleCloudPlatform/cloud-foundation-fabric//modules/net-vpc?ref=v59.0.0"
   project_id   = var.project_id
   name         = var.vpc_name
   routing_mode = "REGIONAL"
