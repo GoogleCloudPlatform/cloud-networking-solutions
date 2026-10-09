@@ -21,7 +21,24 @@ if [ "$ACTION" = "create" ]; then
   TOKEN=$(gcloud auth print-access-token)
   PROJECT_NUMBER=$(gcloud projects describe "$PROJECT_ID" --format="value(projectNumber)")
 
-  echo "Creating Agent Gateway ${GATEWAY_NAME} in ${LOCATION} linked to ${TEMPLATE_NAME} via v1 REST API..."
+  TEMPLATE_SHORT_NAME=$(basename "$TEMPLATE_NAME")
+
+  # Ensure the Agent Connectivity Template has deploymentModel set to CENTRALIZED.
+  # Terraform provider (<= 8.6.0) does not support deployment_model in its schema,
+  # causing the template to be created with deploymentModel unspecified. Without
+  # CENTRALIZED, the tenant orchestrator enters a deadlock and times out after 18 minutes (Code 13).
+  DEPLOYMENT_MODEL=$(curl -s -H "Authorization: Bearer ${TOKEN}" \
+    "https://networkservices.googleapis.com/v1/projects/${PROJECT_ID}/locations/${LOCATION}/agentConnectivityTemplates/${TEMPLATE_SHORT_NAME}" | jq -r .deploymentModel 2>/dev/null || true)
+  if [ "$DEPLOYMENT_MODEL" != "CENTRALIZED" ]; then
+    echo "Ensuring deploymentModel=CENTRALIZED on ${TEMPLATE_SHORT_NAME}..."
+    curl -s -X PATCH \
+      -H "Authorization: Bearer ${TOKEN}" \
+      -H "Content-Type: application/json" \
+      "https://networkservices.googleapis.com/v1/projects/${PROJECT_ID}/locations/${LOCATION}/agentConnectivityTemplates/${TEMPLATE_SHORT_NAME}?updateMask=deploymentModel" \
+      -d '{"deploymentModel": "CENTRALIZED"}' > /dev/null || true
+  fi
+
+  echo "Creating Agent Gateway ${GATEWAY_NAME} in ${LOCATION} linked to ${TEMPLATE_SHORT_NAME} via v1 REST API..."
 
   RESPONSE=$(curl -s -w "\n%{http_code}" -X POST \
     -H "Authorization: Bearer ${TOKEN}" \
@@ -33,14 +50,22 @@ if [ "$ACTION" = "create" ]; then
       \"googleManaged\": {
         \"governedAccessPath\": \"AGENT_TO_ANYWHERE\"
       },
-      \"agentConnectivityTemplate\": \"projects/${PROJECT_NUMBER}/locations/${LOCATION}/agentConnectivityTemplates/${TEMPLATE_NAME}\",
+      \"agentConnectivityTemplate\": \"projects/${PROJECT_NUMBER}/locations/${LOCATION}/agentConnectivityTemplates/${TEMPLATE_SHORT_NAME}\",
       \"registries\": [\"${REGISTRY_URI}\"]
     }")
 
   HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
   BODY=$(echo "$RESPONSE" | sed '$d')
 
-  if [ "$HTTP_CODE" != "200" ]; then
+  if [ "$HTTP_CODE" = "409" ]; then
+    echo "Agent Gateway ${GATEWAY_NAME} already exists. Verifying status..."
+    EXISTING_GW=$(curl -s -H "Authorization: Bearer ${TOKEN}" \
+      "https://networkservices.googleapis.com/v1/projects/${PROJECT_ID}/locations/${LOCATION}/agentGateways/${GATEWAY_NAME}" | jq -r .name 2>/dev/null || true)
+    if [ -n "$EXISTING_GW" ] && [ "$EXISTING_GW" != "null" ]; then
+      echo "Agent Gateway ${GATEWAY_NAME} is active."
+      exit 0
+    fi
+  elif [ "$HTTP_CODE" != "200" ]; then
     echo "ERROR: Failed to initiate Agent Gateway creation (HTTP $HTTP_CODE):" >&2
     echo "$BODY" >&2
     exit 1
@@ -50,7 +75,7 @@ if [ "$ACTION" = "create" ]; then
   echo "Creation operation started: $OP_NAME"
   echo "Waiting for Agent Gateway creation to complete..."
 
-  for i in $(seq 1 120); do
+  for i in $(seq 1 150); do
     OP_STATUS=$(curl -s -H "Authorization: Bearer ${TOKEN}" "https://networkservices.googleapis.com/v1/${OP_NAME}")
     DONE=$(echo "$OP_STATUS" | jq -r .done 2>/dev/null || true)
     if [ "$DONE" = "true" ]; then
@@ -63,7 +88,7 @@ if [ "$ACTION" = "create" ]; then
       exit 0
     fi
     if [ $((i % 4)) -eq 0 ]; then
-      echo "Still creating Agent Gateway (attempt $i/120)..."
+      echo "Still creating Agent Gateway (attempt $i/150)..."
     fi
     sleep 5
   done
