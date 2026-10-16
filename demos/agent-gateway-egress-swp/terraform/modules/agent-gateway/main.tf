@@ -109,25 +109,11 @@ resource "google_network_services_agent_connectivity_template" "agent_connectivi
   agent_connectivity_template_id = local.template_name
   description                    = "Agent Connectivity Template enforcing ALL_TRAFFIC egress via Customer VPC PSC-I Network Attachment"
   access_path                    = "AGENT_TO_ANYWHERE"
+  deployment_model               = "CENTRALIZED"
 
   egress_network_config {
     network_attachment = google_compute_network_attachment.agent_gateway.id
     vpc_egress         = "ALL_TRAFFIC"
-  }
-
-  # Ensure deploymentModel is CENTRALIZED via v1 REST API.
-  # The Google provider (<= 8.6.0) does not yet expose deployment_model on this resource.
-  # Without CENTRALIZED, the template defaults to unspecified, causing the Agent Gateway's
-  # tenant orchestrator to hang for 18 minutes and fail with Code 13 internal error.
-  provisioner "local-exec" {
-    command = <<-EOT
-      TOKEN=$(gcloud auth print-access-token)
-      curl -s -X PATCH \
-        -H "Authorization: Bearer $${TOKEN}" \
-        -H "Content-Type: application/json" \
-        "https://networkservices.googleapis.com/v1/projects/${var.project_id}/locations/${var.region}/agentConnectivityTemplates/${local.template_name}?updateMask=deploymentModel" \
-        -d '{"deploymentModel": "CENTRALIZED"}' > /dev/null || true
-    EOT
   }
 }
 

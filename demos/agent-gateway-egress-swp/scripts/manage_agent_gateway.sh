@@ -23,21 +23,6 @@ if [ "$ACTION" = "create" ]; then
 
   TEMPLATE_SHORT_NAME=$(basename "$TEMPLATE_NAME")
 
-  # Ensure the Agent Connectivity Template has deploymentModel set to CENTRALIZED.
-  # Terraform provider (<= 8.6.0) does not support deployment_model in its schema,
-  # causing the template to be created with deploymentModel unspecified. Without
-  # CENTRALIZED, the tenant orchestrator enters a deadlock and times out after 18 minutes (Code 13).
-  DEPLOYMENT_MODEL=$(curl -s -H "Authorization: Bearer ${TOKEN}" \
-    "https://networkservices.googleapis.com/v1/projects/${PROJECT_ID}/locations/${LOCATION}/agentConnectivityTemplates/${TEMPLATE_SHORT_NAME}" | jq -r .deploymentModel 2>/dev/null || true)
-  if [ "$DEPLOYMENT_MODEL" != "CENTRALIZED" ]; then
-    echo "Ensuring deploymentModel=CENTRALIZED on ${TEMPLATE_SHORT_NAME}..."
-    curl -s -X PATCH \
-      -H "Authorization: Bearer ${TOKEN}" \
-      -H "Content-Type: application/json" \
-      "https://networkservices.googleapis.com/v1/projects/${PROJECT_ID}/locations/${LOCATION}/agentConnectivityTemplates/${TEMPLATE_SHORT_NAME}?updateMask=deploymentModel" \
-      -d '{"deploymentModel": "CENTRALIZED"}' > /dev/null || true
-  fi
-
   echo "Creating Agent Gateway ${GATEWAY_NAME} in ${LOCATION} linked to ${TEMPLATE_SHORT_NAME} via v1 REST API..."
 
   RESPONSE=$(curl -s -w "\n%{http_code}" -X POST \
