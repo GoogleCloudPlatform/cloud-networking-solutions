@@ -130,6 +130,7 @@ sequenceDiagram
    - `governance_project_id`: Service project 1 for Central Agent Gateway, Registry, Model Armor, and MCP.
    - `runtime_project_id`: Service project 2 for Vertex AI Agent Runtime (Reasoning Engine) and staging storage.
    - The user deploying this demo must have **Owner** or **Editor + Network Admin** permissions on all three projects.
+   - **Shared VPC Administration**: Enabling a project as a Shared VPC host project and attaching service projects requires `compute.organizations.enableXpnHost` and `compute.organizations.enableXpnResource` (`roles/compute.xpnAdmin` at the Organization or Folder level). If Shared VPC host enablement and service project attachments are pre-configured by an Org Admin, set `manage_shared_vpc = false` in `terraform.tfvars`.
 2. **Tools Installed**:
    - `gcloud` CLI (authenticated via `gcloud auth login` and `gcloud auth application-default login`)
    - `terraform` (>= 1.12.2)

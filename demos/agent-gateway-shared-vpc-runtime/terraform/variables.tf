@@ -42,6 +42,12 @@ variable "organization_id" {
   type        = string
 }
 
+variable "manage_shared_vpc" {
+  description = "Whether Terraform should manage Shared VPC host enablement and service project attachment. Set to false if Shared VPC is pre-configured by an Organization/Folder Admin."
+  type        = bool
+  default     = true
+}
+
 # -----------------------------------------------------------------------------
 # Naming
 # -----------------------------------------------------------------------------

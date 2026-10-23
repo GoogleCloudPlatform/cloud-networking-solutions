@@ -33,6 +33,12 @@ variable "enable_psc_interface" {
   default     = true
 }
 
+variable "manage_shared_vpc" {
+  description = "Whether Terraform should manage Shared VPC host enablement and service project attachment. Set to false if Shared VPC is pre-configured by an Organization/Folder Admin."
+  type        = bool
+  default     = true
+}
+
 variable "logging_data_access" {
   description = "Data access audit log configuration."
   type = map(object({

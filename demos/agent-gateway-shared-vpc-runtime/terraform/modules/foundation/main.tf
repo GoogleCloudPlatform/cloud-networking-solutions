@@ -112,18 +112,21 @@ module "runtime_project" {
 # 4. Shared VPC Host Project Enablement & Service Project Attachments
 # -----------------------------------------------------------------------------
 resource "google_compute_shared_vpc_host_project" "host" {
+  count      = var.manage_shared_vpc ? 1 : 0
   project    = module.networking_project.project_id
   depends_on = [module.networking_project]
 }
 
 resource "google_compute_shared_vpc_service_project" "service" {
-  host_project    = google_compute_shared_vpc_host_project.host.project
+  count           = var.manage_shared_vpc ? 1 : 0
+  host_project    = var.manage_shared_vpc ? google_compute_shared_vpc_host_project.host[0].project : module.networking_project.project_id
   service_project = module.governance_project.project_id
   depends_on      = [google_compute_shared_vpc_host_project.host, module.governance_project]
 }
 
 resource "google_compute_shared_vpc_service_project" "runtime_service" {
-  host_project    = google_compute_shared_vpc_host_project.host.project
+  count           = var.manage_shared_vpc ? 1 : 0
+  host_project    = var.manage_shared_vpc ? google_compute_shared_vpc_host_project.host[0].project : module.networking_project.project_id
   service_project = module.runtime_project.project_id
   depends_on      = [google_compute_shared_vpc_host_project.host, module.runtime_project]
 }

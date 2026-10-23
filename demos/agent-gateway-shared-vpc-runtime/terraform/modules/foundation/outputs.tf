@@ -49,7 +49,7 @@ output "runtime_aiplatform_sa_email" {
 
 output "shared_vpc_ready" {
   description = "Identifier confirming Shared VPC service project association is active"
-  value       = google_compute_shared_vpc_service_project.service.id
+  value       = var.manage_shared_vpc ? try(google_compute_shared_vpc_service_project.service[0].id, "${module.networking_project.project_id}/${module.governance_project.project_id}") : "${module.networking_project.project_id}/${module.governance_project.project_id}"
 }
 
 output "model_armor_service_agent_email" {

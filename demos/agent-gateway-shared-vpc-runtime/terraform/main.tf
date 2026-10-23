@@ -58,6 +58,7 @@ module "foundation" {
   networking_project_id = var.networking_project_id
   runtime_project_id    = var.runtime_project_id
   enable_psc_interface  = true
+  manage_shared_vpc     = var.manage_shared_vpc
   logging_data_access   = var.logging_data_access
 }
 
