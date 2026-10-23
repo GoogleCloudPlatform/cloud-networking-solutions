@@ -226,7 +226,7 @@ variable "model_armor_rai_filters" {
       confidence_level = "LOW_AND_ABOVE"
     },
     {
-      filter_type      = "DANGEROUS_CONTENT"
+      filter_type      = "DANGEROUS"
       confidence_level = "LOW_AND_ABOVE"
     }
   ]
