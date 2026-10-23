@@ -1,0 +1,8 @@
+name: agent-gateway
+protocols:
+  - MCP
+googleManaged:
+  governedAccessPath: AGENT_TO_ANYWHERE
+agentConnectivityTemplate: projects/PROJECT_NUMBER/locations/REGION/agentConnectivityTemplates/cuj2-template
+registries:
+  - //agentregistry.googleapis.com/projects/PROJECT_ID/locations/REGION
