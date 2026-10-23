@@ -57,6 +57,7 @@ module "foundation" {
   governance_project_id = var.governance_project_id
   networking_project_id = var.networking_project_id
   enable_psc_interface  = true
+  manage_shared_vpc     = var.manage_shared_vpc
   logging_data_access   = var.logging_data_access
 }
 

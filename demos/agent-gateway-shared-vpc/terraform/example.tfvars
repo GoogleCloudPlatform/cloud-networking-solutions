@@ -8,6 +8,9 @@ networking_project_id = "your-networking-project-id" # Host project: Shared VPC,
 organization_id       = "123456789012"               # Numeric org ID (gcloud organizations list)
 region                = "us-central1"
 
+# Shared VPC Management: set to false if Shared VPC host & service attachment are pre-configured by an Org Admin
+# manage_shared_vpc = false
+
 # Naming — short prefix used across all resource names
 name_prefix = "agw-svpc"
 

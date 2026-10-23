@@ -84,6 +84,7 @@ In this topology, enterprise responsibilities are strictly decoupled between two
    - `governance_project_id`: Project for Agent Gateway, Reasoning Engine, Model Armor, and MCP.
    - `networking_project_id`: Project for Shared VPC, subnets, SWP, Cloud NAT, and DNS.
    - The user deploying this demo must have **Owner** or **Editor + Network Admin** permissions on both projects.
+   - **Shared VPC Administration**: Enabling a project as a Shared VPC host project requires `compute.organizations.enableXpnHost` (`roles/compute.xpnAdmin` at the Organization or Folder level). If Shared VPC host enablement and service project attachment are pre-configured by an Org Admin, set `manage_shared_vpc = false` in `terraform.tfvars`.
 2. **Tools Installed**:
    - `gcloud` CLI (authenticated via `gcloud auth login` and `gcloud auth application-default login`)
    - `terraform` (>= 1.12.2)
