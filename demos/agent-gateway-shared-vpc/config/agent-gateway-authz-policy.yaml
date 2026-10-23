@@ -1,0 +1,8 @@
+name: projects/PROJECT_ID/locations/REGION/authzPolicies/agent-gateway-allow-all
+action: ALLOW
+policyProfile: REQUEST_AUTHZ
+target:
+  resources:
+  - projects/PROJECT_NUMBER/locations/REGION/agentGateways/agent-gateway
+httpRules:
+- when: 'true'
