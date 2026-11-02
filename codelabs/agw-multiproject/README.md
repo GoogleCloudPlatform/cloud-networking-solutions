@@ -41,7 +41,7 @@ sequenceDiagram
 
 > **Note:** The step-by-step interactive walkthrough and deployment instructions are available in the official Google Cloud Codelab:
 >
-> * **[Deploy and Govern Multi-Project AI Agents with Agent Gateway and Agent Registry](https://codelabs.developers.google.com/)** *(link will be updated upon publication)*
+> * **[Agent Gateway centralized governance with cross-project Agent Registry for Agent Runtime](https://codelabs.developers.google.com/agw-multiproject)**
 
 ## Repository Structure
 

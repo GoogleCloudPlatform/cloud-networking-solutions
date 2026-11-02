@@ -32,9 +32,9 @@ The code within the subdirectories is intended to be checked out or downloaded a
 
 ### Agent Gateway multi-project agent-to-agent orchestration
 
-*   **Directory:** [`agw-cuj-arun-multiproject/`](agw-cuj-arun-multiproject/)
+*   **Directory:** [`agw-multiproject/`](agw-multiproject/)
 *   **Description:** Implement cross-project agent-to-agent (A2A) orchestration with Agent Gateway and Vertex AI Agent Runtime, featuring dynamic agent autodiscovery via Agent Registry and zero-trust SPIFFE mTLS machine identity governance.
-*   **Published Codelab Link:** TBD
+*   **Published Codelab Link:** [https://codelabs.developers.google.com/agw-multiproject](https://codelabs.developers.google.com/agw-multiproject)
 
 ### Agent Gateway egress from Agent Runtime in VPC Service Controls (VPC-SC)
 

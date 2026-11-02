@@ -19,14 +19,12 @@ os.environ["GOOGLE_API_USE_MTLS_ENDPOINT"] = "never"
 import vertexai
 import agentplatform
 from dotenv import load_dotenv
-load_dotenv("burger_agent.env")
-load_dotenv("pizza_agent.env")
-load_dotenv("seller_agents.env")
-load_dotenv()
 from cleanup_old_deployments import delete_old_deployments
 
+load_dotenv()
+
 def main():
-    parser = argparse.ArgumentParser(description="Deploy Purchasing Concierge with Agent Identity and Agent Gateway")
+    parser = argparse.ArgumentParser(description="Deploy Remote Seller Agents with Agent Identity and Agent Gateway")
     parser.add_argument("--project", required=True, help="Google Cloud Project ID")
     parser.add_argument("--region", required=True, help="Google Cloud Region")
     parser.add_argument("--staging-bucket", help="GCS bucket for staging")
@@ -46,8 +44,8 @@ def main():
         staging_bucket=staging_bucket_uri,
     )
 
-    print("Cleaning up old unused purchasing concierge deployments...")
-    delete_old_deployments(args.project, args.region, ["purchasing-concierge-adk"])
+    print("Cleaning up old unused seller agent deployments...")
+    delete_old_deployments(args.project, args.region, ["burger-seller-agent-adk", "pizza-seller-agent-adk", "purchasing-concierge-adk"])
 
     client = agentplatform.Client(
         project=args.project,
@@ -55,15 +53,9 @@ def main():
         http_options=dict(api_version="v1beta1"),
     )
 
-    from purchasing_concierge.agent import root_agent
+    from remote_seller_agents.burger_agent.agent_adk import burger_agent as burger_adk_agent
+    from remote_seller_agents.pizza_agent.agent_adk import pizza_agent as pizza_adk_agent
     from vertexai.preview import reasoning_engines
-    from google.adk.sessions import InMemorySessionService
-
-    adk_app = reasoning_engines.AdkApp(
-        agent=root_agent,
-        session_service_builder=lambda: InMemorySessionService(),
-        enable_tracing=False,
-    )
 
     class PlaygroundCompatibleAdkAgent:
         agent_framework = "google-adk"
@@ -72,7 +64,8 @@ def main():
             self.app = app
 
         def set_up(self):
-            self.app.set_up()
+            if hasattr(self.app, "set_up"):
+                self.app.set_up()
 
         def register_operations(self) -> dict[str, list[str]]:
             return {
@@ -112,7 +105,7 @@ def main():
                 if next_val is not None:
                     input = next_val
                 else:
-                    str_vals = [v for k, v in input.items() if isinstance(v, str) and k not in ("user", "userId", "user_id", "author", "role", "session_id", "sessionId")]
+                    str_vals = [v for v in input.values() if isinstance(v, str)]
                     if str_vals:
                         input = str_vals[0]
                     else:
@@ -121,7 +114,7 @@ def main():
 
             message = str(input) if input is not None else ""
             effective_user_id = user_id or "console-tester-user"
-            effective_session_id = session_id or f"session-{effective_user_id}"
+            effective_session_id = session_id
 
             return message, effective_user_id, effective_session_id, kwargs
 
@@ -177,57 +170,55 @@ def main():
             for chunk in self.stream_query(input=input, user_id=user_id, session_id=session_id, **kwargs):
                 yield chunk
 
-    playground_app = PlaygroundCompatibleAdkAgent(app=adk_app)
-
-    load_dotenv("burger_agent.env")
-    load_dotenv("pizza_agent.env")
-
-    raw_env_vars = {
-        "GOOGLE_GENAI_USE_VERTEXAI": "true",
-        "AGENT_PROJECT_ID": args.project,
-        "AGENT_REGION": args.region,
-        "GOVERNANCE_PROJECT_ID": gateway_project,
-        "PIZZA_SELLER_AGENT_ID": os.environ.get("PIZZA_SELLER_AGENT_ID", ""),
-        "BURGER_SELLER_AGENT_ID": os.environ.get("BURGER_SELLER_AGENT_ID", ""),
-    }
-    filtered_env_vars = {k: v for k, v in raw_env_vars.items() if v}
-
-    concierge_config = {
+    common_config = {
         "staging_bucket": staging_bucket_uri,
-        "gcs_dir_name": "concierge_agent",
-        "display_name": "purchasing-concierge-adk",
         "requirements": [
             "google-cloud-aiplatform[agent_engines]>=1.149.0",
             "google-adk[a2a,agent-identity]==1.34.0",
             "httpx>=0.28.1",
             "requests>=2.32.0",
-            "cloudpickle",
-            "pydantic",
+            "cloudpickle>=3.0.0",
+            "pydantic>=2.0.0",
+            "google-genai",
         ],
-        "extra_packages": [
-            "./purchasing_concierge",
-        ],
+        "extra_packages": ["./remote_seller_agents"],
         "identity_type": "AGENT_IDENTITY",
         "agent_gateway_config": {
             "agent_to_anywhere_config": {
                 "agent_gateway": f"projects/{gateway_project}/locations/{args.region}/agentGateways/{args.gateway_name}"
             }
         },
-        "env_vars": filtered_env_vars,
+        "env_vars": {
+            "GOOGLE_GENAI_USE_VERTEXAI": "true",
+            "AGENT_PROJECT_ID": args.project,
+            "AGENT_REGION": args.region,
+        }
     }
 
-    print("Deploying Purchasing Concierge with Agent Identity & Agent Gateway...")
-    deployed_concierge = client.agent_engines.create(
-        agent=playground_app,
-        config=concierge_config,
-    )
-    concierge_name = deployed_concierge.api_resource.name
-    print(f"Purchasing Concierge deployed: {concierge_name}")
-    print(f"Concierge ID: {concierge_name}")
+    from google.adk.sessions import InMemorySessionService
 
-    with open("concierge_agent.env", "w") as f:
-        f.write(f"CONCIERGE_AGENT_ID={concierge_name}\n")
-    print("Saved concierge agent ID to concierge_agent.env")
+    # Deploy Burger Agent
+    print("Deploying Burger Agent with Agent Identity & Agent Gateway...")
+    burger_app = reasoning_engines.AdkApp(agent=burger_adk_agent, session_service_builder=lambda: InMemorySessionService(), enable_tracing=False)
+    burger_playground = PlaygroundCompatibleAdkAgent(burger_app)
+    burger_config = {**common_config, "display_name": "burger-seller-agent-adk", "gcs_dir_name": "burger_agent"}
+    deployed_burger = client.agent_engines.create(agent=burger_playground, config=burger_config)
+    burger_name = deployed_burger.api_resource.name
+    print(f"Burger Agent deployed: {burger_name}")
+
+    # Deploy Pizza Agent
+    print("Deploying Pizza Agent with Agent Identity & Agent Gateway...")
+    pizza_app = reasoning_engines.AdkApp(agent=pizza_adk_agent, session_service_builder=lambda: InMemorySessionService(), enable_tracing=False)
+    pizza_playground = PlaygroundCompatibleAdkAgent(pizza_app)
+    pizza_config = {**common_config, "display_name": "pizza-seller-agent-adk", "gcs_dir_name": "pizza_agent"}
+    deployed_pizza = client.agent_engines.create(agent=pizza_playground, config=pizza_config)
+    pizza_name = deployed_pizza.api_resource.name
+    print(f"Pizza Agent deployed: {pizza_name}")
+
+    with open("seller_agents.env", "w") as f:
+        f.write(f"BURGER_SELLER_AGENT_ID={burger_name}\n")
+        f.write(f"PIZZA_SELLER_AGENT_ID={pizza_name}\n")
+    print("Saved agent IDs to seller_agents.env")
 
 if __name__ == "__main__":
     main()

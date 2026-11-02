@@ -16,7 +16,7 @@ import os
 import vertexai
 from vertexai.preview import reasoning_engines
 
-project = os.getenv("PROJECT_CONCIERGE", "agent-runtime1")
+project = os.getenv("PROJECT_CONCIERGE")
 region = os.getenv("REGION", "us-central1")
 engine_id = os.getenv("CONCIERGE_ENGINE_ID", "<CONCIERGE_ENGINE_ID>")
 
