@@ -23,8 +23,8 @@ from dotenv import load_dotenv
 load_dotenv()
 
 def main():
-    parser = argparse.ArgumentParser(description="Deploy Pizza Seller Agent with Agent Identity and Agent Gateway")
-    parser.add_argument("--project", required=True, help="Google Cloud Project ID for deployment (e.g. agent-runtime2)")
+    parser = argparse.ArgumentParser(description="Deploy Burger Seller Agent with Agent Identity and Agent Gateway")
+    parser.add_argument("--project", required=True, help="Google Cloud Project ID for deployment (e.g. my-sellers-project)")
     parser.add_argument("--region", required=True, help="Google Cloud Region")
     parser.add_argument("--governance-project", required=True, help="Governance/Gateway Project ID (e.g. centralized-governance-project)")
     parser.add_argument("--gateway", required=True, help="Agent Gateway name")
@@ -38,13 +38,14 @@ def main():
         staging_bucket=staging_bucket_uri,
     )
 
+    print("Initializing agentplatform Client...")
     client = agentplatform.Client(
         project=args.project,
         location=args.region,
         http_options=dict(api_version="v1beta1"),
     )
 
-    from pizza_pkg.agent_adk import pizza_agent as pizza_adk_agent
+    from burger_pkg.agent_adk import burger_agent as burger_adk_agent
     from vertexai.preview import reasoning_engines
 
     class PlaygroundCompatibleAdkAgent:
@@ -161,15 +162,14 @@ def main():
                 yield chunk
 
     from google.adk.sessions import InMemorySessionService
-    pizza_app = reasoning_engines.AdkApp(agent=pizza_adk_agent, session_service_builder=lambda: InMemorySessionService(), enable_tracing=False)
-    pizza_playground = PlaygroundCompatibleAdkAgent(pizza_app)
-
+    burger_app = reasoning_engines.AdkApp(agent=burger_adk_agent, session_service_builder=lambda: InMemorySessionService(), enable_tracing=False)
+    burger_playground = PlaygroundCompatibleAdkAgent(burger_app)
     gateway_path = args.gateway if args.gateway.startswith("projects/") else f"projects/{args.governance_project}/locations/{args.region}/agentGateways/{args.gateway}"
 
-    pizza_config = {
+    burger_config = {
         "staging_bucket": staging_bucket_uri,
-        "gcs_dir_name": "pizza_agent",
-        "display_name": "pizza-seller-agent-adk",
+        "gcs_dir_name": "burger_agent",
+        "display_name": "burger-seller-agent-adk",
         "requirements": [
             "google-cloud-aiplatform[agent_engines]>=1.149.0",
             "google-adk[a2a,agent-identity]==1.34.0",
@@ -177,8 +177,9 @@ def main():
             "requests>=2.32.0",
             "cloudpickle>=3.0.0",
             "pydantic>=2.0.0",
+            "google-genai",
         ],
-        "extra_packages": ["./pizza_pkg"],
+        "extra_packages": ["./burger_pkg"],
         "identity_type": "AGENT_IDENTITY",
         "agent_gateway_config": {
             "agent_to_anywhere_config": {
@@ -192,14 +193,15 @@ def main():
         }
     }
 
-    print("Deploying Pizza Agent with Agent Identity & Agent Gateway...")
-    deployed_pizza = client.agent_engines.create(agent=pizza_playground, config=pizza_config)
-    pizza_name = deployed_pizza.api_resource.name
-    print(f"Pizza Agent deployed: {pizza_name}")
+    print("Deploying Burger Agent with Agent Identity & Agent Gateway...")
+    print("Calling client.agent_engines.create...")
+    deployed_burger = client.agent_engines.create(agent=burger_playground, config=burger_config)
+    burger_name = deployed_burger.api_resource.name
+    print(f"Burger Agent deployed: {burger_name}")
 
-    with open("pizza_agent.env", "w") as f:
-        f.write(f"PIZZA_SELLER_AGENT_ID={pizza_name}\n")
-    print("Saved pizza agent ID to pizza_agent.env")
+    with open("burger_agent.env", "w") as f:
+        f.write(f"BURGER_SELLER_AGENT_ID={burger_name}\n")
+    print("Saved burger agent ID to burger_agent.env")
 
 if __name__ == "__main__":
     main()

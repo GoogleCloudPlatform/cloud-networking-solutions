@@ -1,8 +1,8 @@
 ---
-id: agw-cuj-arun-manual-multiproject
+id: agw-multiproject
 authors: Deepak Michael, Michael Larson
 description: Implement cross-project centralized governance and dynamic Agent Registry autodiscovery with Agent Gateway, Agent Registry, Identity-Aware Proxy (IAP) v2, and IAM Unified Access Policies (UAP) in Gemini Enterprise Agent Platform.
-feedback_link: https://github.com/googlecodelabs/feedback/issues/new?title=[agw-cuj-arun-manual-multiproject]
+feedback_link: https://github.com/googlecodelabs/feedback/issues/new?title=[agw-multiproject]
 project: /devsite/_project.yaml
 book: /devsite/_book.yaml
 keywords: docType:Codelab,product:AgentPlatform,product:AgentRegistry,product:IdentityAwareProxy,api:NetworkServicesApi,api:IamApi
@@ -522,8 +522,13 @@ gcloud agent-registry services create core-gapi-services \
   --interfaces=protocolBinding=JSONRPC,url=https://aiplatform.mtls.googleapis.com \
   --interfaces=protocolBinding=JSONRPC,url=https://aiplatform.mtls.googleapis.com:443 \
   --interfaces=protocolBinding=JSONRPC,url=https://cloudresourcemanager.googleapis.com \
+  --interfaces=protocolBinding=JSONRPC,url=https://cloudresourcemanager.googleapis.com:443 \
+  --interfaces=protocolBinding=JSONRPC,url=https://cloudresourcemanager.mtls.googleapis.com \
+  --interfaces=protocolBinding=JSONRPC,url=https://cloudresourcemanager.mtls.googleapis.com:443 \
   --interfaces=protocolBinding=JSONRPC,url=https://iamcredentials.googleapis.com \
+  --interfaces=protocolBinding=JSONRPC,url=https://iamcredentials.googleapis.com:443 \
   --interfaces=protocolBinding=JSONRPC,url=https://iamcredentials.mtls.googleapis.com \
+  --interfaces=protocolBinding=JSONRPC,url=https://iamcredentials.mtls.googleapis.com:443 \
   --interfaces=protocolBinding=JSONRPC,url=https://agentregistry.googleapis.com \
   --interfaces=protocolBinding=JSONRPC,url=https://agentregistry.mtls.googleapis.com \
   --interfaces=protocolBinding=JSONRPC,url=https://agentregistry.googleapis.com:443 \
@@ -1110,8 +1115,16 @@ Duration: 15:00
 Clone the multi-agent application codebase and install dependencies:
 
 ```bash
-# clone multi-agent repository
-git clone https://github.com/demichael4520/cross-project-multiagent.git
+# Clone the repository containing the sample agents
+git clone https://github.com/GoogleCloudPlatform/cloud-networking-solutions.git ./temp_agw_multiproject
+
+# Copy the codelab directory
+cp -r temp_agw_multiproject/codelabs/agw-multiproject ./cross-project-multiagent
+
+# Clean up the cloned repository
+rm -rf temp_agw_multiproject
+
+# Navigate to the copied codelab directory
 cd cross-project-multiagent
 uv sync
 ```
@@ -1247,39 +1260,57 @@ using cross-project regional mTLS endpoints and numeric project numbers.
 ### Register Services as Non-A2A Agents in Agent Registry
 
 ```bash
-# 1. register Burger Seller Agent (both v1 and v1beta1 endpoints)
+# 1. register Burger Seller Agent
 gcloud agent-registry services create burger-seller-agent \
   --project=${PROJECT_GOVERNANCE} \
   --location=${REGION} \
   --display-name="Burger Seller Agent" \
   --description="Specialist agent that sells burgers and fries" \
   --agent-spec-type=no-spec \
-  --interfaces=protocolBinding=JSONRPC,url=https://${REGION}-aiplatform.mtls.googleapis.com/v1/projects/${PROJECT_NUMBER_SELLERS}/locations/${REGION}/reasoningEngines/${BURGER_ENGINE_ID} \
-  --interfaces=protocolBinding=JSONRPC,url=https://${REGION}-aiplatform.mtls.googleapis.com/v1beta1/projects/${PROJECT_NUMBER_SELLERS}/locations/${REGION}/reasoningEngines/${BURGER_ENGINE_ID}
+  --interfaces=protocolBinding=JSONRPC,url=https://${REGION}-aiplatform.googleapis.com/v1/projects/${PROJECT_NUMBER_SELLERS}/locations/${REGION}/reasoningEngines/${BURGER_ENGINE_ID}:query \
+  --interfaces=protocolBinding=JSONRPC,url=https://${REGION}-aiplatform.googleapis.com/v1beta1/projects/${PROJECT_NUMBER_SELLERS}/locations/${REGION}/reasoningEngines/${BURGER_ENGINE_ID}:query \
+  --interfaces=protocolBinding=JSONRPC,url=https://${REGION}-aiplatform.googleapis.com:443/v1/projects/${PROJECT_NUMBER_SELLERS}/locations/${REGION}/reasoningEngines/${BURGER_ENGINE_ID}:query \
+  --interfaces=protocolBinding=JSONRPC,url=https://${REGION}-aiplatform.googleapis.com:443/v1beta1/projects/${PROJECT_NUMBER_SELLERS}/locations/${REGION}/reasoningEngines/${BURGER_ENGINE_ID}:query \
+  --interfaces=protocolBinding=JSONRPC,url=https://${REGION}-aiplatform.mtls.googleapis.com/v1/projects/${PROJECT_NUMBER_SELLERS}/locations/${REGION}/reasoningEngines/${BURGER_ENGINE_ID}:query \
+  --interfaces=protocolBinding=JSONRPC,url=https://${REGION}-aiplatform.mtls.googleapis.com/v1beta1/projects/${PROJECT_NUMBER_SELLERS}/locations/${REGION}/reasoningEngines/${BURGER_ENGINE_ID}:query \
+  --interfaces=protocolBinding=JSONRPC,url=https://${REGION}-aiplatform.mtls.googleapis.com:443/v1/projects/${PROJECT_NUMBER_SELLERS}/locations/${REGION}/reasoningEngines/${BURGER_ENGINE_ID}:query \
+  --interfaces=protocolBinding=JSONRPC,url=https://${REGION}-aiplatform.mtls.googleapis.com:443/v1beta1/projects/${PROJECT_NUMBER_SELLERS}/locations/${REGION}/reasoningEngines/${BURGER_ENGINE_ID}:query
 ```
 
 ```bash
-# 2. register Pizza Seller Agent (both v1 and v1beta1 endpoints)
+# 2. register Pizza Seller Agent
 gcloud agent-registry services create pizza-seller-agent \
   --project=${PROJECT_GOVERNANCE} \
   --location=${REGION} \
   --display-name="Pizza Seller Agent" \
   --description="Specialist agent that sells pizzas and pasta" \
   --agent-spec-type=no-spec \
-  --interfaces=protocolBinding=JSONRPC,url=https://${REGION}-aiplatform.mtls.googleapis.com/v1/projects/${PROJECT_NUMBER_SELLERS}/locations/${REGION}/reasoningEngines/${PIZZA_ENGINE_ID} \
-  --interfaces=protocolBinding=JSONRPC,url=https://${REGION}-aiplatform.mtls.googleapis.com/v1beta1/projects/${PROJECT_NUMBER_SELLERS}/locations/${REGION}/reasoningEngines/${PIZZA_ENGINE_ID}
+  --interfaces=protocolBinding=JSONRPC,url=https://${REGION}-aiplatform.googleapis.com/v1/projects/${PROJECT_NUMBER_SELLERS}/locations/${REGION}/reasoningEngines/${PIZZA_ENGINE_ID}:query \
+  --interfaces=protocolBinding=JSONRPC,url=https://${REGION}-aiplatform.googleapis.com/v1beta1/projects/${PROJECT_NUMBER_SELLERS}/locations/${REGION}/reasoningEngines/${PIZZA_ENGINE_ID}:query \
+  --interfaces=protocolBinding=JSONRPC,url=https://${REGION}-aiplatform.googleapis.com:443/v1/projects/${PROJECT_NUMBER_SELLERS}/locations/${REGION}/reasoningEngines/${PIZZA_ENGINE_ID}:query \
+  --interfaces=protocolBinding=JSONRPC,url=https://${REGION}-aiplatform.googleapis.com:443/v1beta1/projects/${PROJECT_NUMBER_SELLERS}/locations/${REGION}/reasoningEngines/${PIZZA_ENGINE_ID}:query \
+  --interfaces=protocolBinding=JSONRPC,url=https://${REGION}-aiplatform.mtls.googleapis.com/v1/projects/${PROJECT_NUMBER_SELLERS}/locations/${REGION}/reasoningEngines/${PIZZA_ENGINE_ID}:query \
+  --interfaces=protocolBinding=JSONRPC,url=https://${REGION}-aiplatform.mtls.googleapis.com/v1beta1/projects/${PROJECT_NUMBER_SELLERS}/locations/${REGION}/reasoningEngines/${PIZZA_ENGINE_ID}:query \
+  --interfaces=protocolBinding=JSONRPC,url=https://${REGION}-aiplatform.mtls.googleapis.com:443/v1/projects/${PROJECT_NUMBER_SELLERS}/locations/${REGION}/reasoningEngines/${PIZZA_ENGINE_ID}:query \
+  --interfaces=protocolBinding=JSONRPC,url=https://${REGION}-aiplatform.mtls.googleapis.com:443/v1beta1/projects/${PROJECT_NUMBER_SELLERS}/locations/${REGION}/reasoningEngines/${PIZZA_ENGINE_ID}:query
 ```
 
 ```bash
-# 3. register Purchasing Concierge Agent (both v1 and v1beta1 endpoints)
+# 3. register Purchasing Concierge Agent
 gcloud agent-registry services create purchasing-concierge-adk \
   --project=${PROJECT_GOVERNANCE} \
   --location=${REGION} \
   --display-name="Purchasing Concierge Agent" \
   --description="Orchestrator concierge agent that routes purchasing requests" \
   --agent-spec-type=no-spec \
-  --interfaces=protocolBinding=JSONRPC,url=https://${REGION}-aiplatform.mtls.googleapis.com/v1/projects/${PROJECT_NUMBER_CONCIERGE}/locations/${REGION}/reasoningEngines/${CONCIERGE_ENGINE_ID} \
-  --interfaces=protocolBinding=JSONRPC,url=https://${REGION}-aiplatform.mtls.googleapis.com/v1beta1/projects/${PROJECT_NUMBER_CONCIERGE}/locations/${REGION}/reasoningEngines/${CONCIERGE_ENGINE_ID}
+  --interfaces=protocolBinding=JSONRPC,url=https://${REGION}-aiplatform.googleapis.com/v1/projects/${PROJECT_NUMBER_CONCIERGE}/locations/${REGION}/reasoningEngines/${CONCIERGE_ENGINE_ID}:query \
+  --interfaces=protocolBinding=JSONRPC,url=https://${REGION}-aiplatform.googleapis.com/v1beta1/projects/${PROJECT_NUMBER_CONCIERGE}/locations/${REGION}/reasoningEngines/${CONCIERGE_ENGINE_ID}:query \
+  --interfaces=protocolBinding=JSONRPC,url=https://${REGION}-aiplatform.googleapis.com:443/v1/projects/${PROJECT_NUMBER_CONCIERGE}/locations/${REGION}/reasoningEngines/${CONCIERGE_ENGINE_ID}:query \
+  --interfaces=protocolBinding=JSONRPC,url=https://${REGION}-aiplatform.googleapis.com:443/v1beta1/projects/${PROJECT_NUMBER_CONCIERGE}/locations/${REGION}/reasoningEngines/${CONCIERGE_ENGINE_ID}:query \
+  --interfaces=protocolBinding=JSONRPC,url=https://${REGION}-aiplatform.mtls.googleapis.com/v1/projects/${PROJECT_NUMBER_CONCIERGE}/locations/${REGION}/reasoningEngines/${CONCIERGE_ENGINE_ID}:query \
+  --interfaces=protocolBinding=JSONRPC,url=https://${REGION}-aiplatform.mtls.googleapis.com/v1beta1/projects/${PROJECT_NUMBER_CONCIERGE}/locations/${REGION}/reasoningEngines/${CONCIERGE_ENGINE_ID}:query \
+  --interfaces=protocolBinding=JSONRPC,url=https://${REGION}-aiplatform.mtls.googleapis.com:443/v1/projects/${PROJECT_NUMBER_CONCIERGE}/locations/${REGION}/reasoningEngines/${CONCIERGE_ENGINE_ID}:query \
+  --interfaces=protocolBinding=JSONRPC,url=https://${REGION}-aiplatform.mtls.googleapis.com:443/v1beta1/projects/${PROJECT_NUMBER_CONCIERGE}/locations/${REGION}/reasoningEngines/${CONCIERGE_ENGINE_ID}:query
 ```
 
 ### Capture Underlying Agent Registry IDs
@@ -1556,7 +1587,7 @@ gcloud logging read \
 
 ```text
 TIME      METHOD  STATUS  AUTHZ   URL
-21:30:15  POST    403     DENIED  https://us-central1-aiplatform.mtls.googleapis.com/v1beta1/projects/my-sellers-project/locations/us-central1/publishers/google/models/gemini-2.5-flash:generateContent
+21:30:15  POST    403     DENIED  https://us-central1-aiplatform.mtls.googleapis.com/v1beta1/projects/my-sellers-project/locations/us-central1/publishers/google/models/gemini-3.5-flash:generateContent
 ```
 
 Query IAP v2 Data Access audit logs for the denied decision:

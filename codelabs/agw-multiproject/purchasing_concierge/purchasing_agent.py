@@ -22,6 +22,39 @@ from google.adk.agents.readonly_context import ReadonlyContext
 from google.adk.agents.callback_context import CallbackContext
 from google.adk.tools.tool_context import ToolContext
 from vertexai.preview import reasoning_engines
+import asyncio
+from google.adk.models.google_llm import Gemini as _AdkGemini
+from google.genai import Client as _GenaiClient
+from pydantic import PrivateAttr as _PrivateAttr
+
+class GlobalGemini(_AdkGemini):
+    """Routes Gemini 3.5 calls to locations/global while handling ADK per-turn event loops."""
+    _custom_client: _GenaiClient | None = _PrivateAttr(default=None)
+    _client_loop: object = _PrivateAttr(default=None)
+
+    @property
+    def api_client(self) -> _GenaiClient:
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            loop = None
+        if (
+            self._custom_client is None
+            or self._client_loop is not loop
+            or (loop is not None and loop.is_closed())
+        ):
+            proj = (
+                os.environ.get("GOOGLE_CLOUD_PROJECT")
+                or os.environ.get("AGENT_PROJECT_ID")
+            )
+            self._custom_client = _GenaiClient(
+                vertexai=True,
+                project=proj,
+                location="global",
+            )
+            self._client_loop = loop
+        return self._custom_client
+
 
 STATE_FILE = "/tmp/purchasing_concierge_shared_state.json"
 
@@ -79,7 +112,7 @@ class PurchasingAgent:
 
     def create_agent(self) -> Agent:
         return Agent(
-            model="gemini-2.5-flash",
+            model=GlobalGemini(model="gemini-3.5-flash"),
             name="purchasing_agent",
             instruction=self.root_instruction,
             before_model_callback=self.before_model_callback,
@@ -145,7 +178,7 @@ Pending transaction context: {pending_desc}
             governance_project = (
                 os.getenv("GOVERNANCE_PROJECT_ID")
                 or os.getenv("AGENT_GATEWAY_PROJECT_ID")
-                or "centralized-governance-project"
+                or os.getenv("PROJECT_GOVERNANCE", "")
             )
             location = (
                 os.getenv("AGENT_REGION")
@@ -277,7 +310,7 @@ Pending transaction context: {pending_desc}
                 parts = agent_id.split("/")
                 target_project = parts[1]
             else:
-                target_project = os.getenv("PROJECT_SELLERS") or os.getenv("GOOGLE_CLOUD_PROJECT") or "agent-runtime2"
+                target_project = os.getenv("PROJECT_SELLERS") or os.getenv("GOOGLE_CLOUD_PROJECT") or ""
             location = os.getenv("AGENT_REGION") or os.getenv("GOOGLE_CLOUD_LOCATION") or "us-central1"
 
             import google.auth

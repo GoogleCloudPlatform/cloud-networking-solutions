@@ -12,9 +12,41 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import asyncio
+import os as _os
 from google.adk.agents import LlmAgent
-from pydantic import BaseModel
+from google.adk.models.google_llm import Gemini as _AdkGemini
+from google.genai import Client as _GenaiClient
+from pydantic import BaseModel, PrivateAttr as _PrivateAttr
 import uuid
+
+class GlobalGemini(_AdkGemini):
+    """Routes Gemini 3.5 calls to locations/global while handling ADK per-turn event loops."""
+    _custom_client: _GenaiClient | None = _PrivateAttr(default=None)
+    _client_loop: object = _PrivateAttr(default=None)
+
+    @property
+    def api_client(self) -> _GenaiClient:
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            loop = None
+        if (
+            self._custom_client is None
+            or self._client_loop is not loop
+            or (loop is not None and loop.is_closed())
+        ):
+            proj = (
+                _os.environ.get("GOOGLE_CLOUD_PROJECT")
+                or _os.environ.get("AGENT_PROJECT_ID")
+            )
+            self._custom_client = _GenaiClient(
+                vertexai=True,
+                project=proj,
+                location="global",
+            )
+            self._client_loop = loop
+        return self._custom_client
 
 class OrderItem(BaseModel):
     name: str
@@ -44,7 +76,7 @@ def create_pizza_order(order_items: list[OrderItem]) -> str:
 
 pizza_agent = LlmAgent(
     name="pizza_seller_agent",
-    model="gemini-2.5-flash",
+    model=GlobalGemini(model="gemini-3.5-flash"),
     instruction="""
 You are a specialized assistant for a pizza store.
 Your sole purpose is to answer questions about what is available on pizza menu and price also handle order creation.

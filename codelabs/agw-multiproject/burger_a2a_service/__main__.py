@@ -36,7 +36,8 @@ logger = logging.getLogger(__name__)
 
 os.environ["GOOGLE_GENAI_USE_VERTEXAI"] = "True"
 if not os.getenv("GOOGLE_CLOUD_PROJECT"):
-    os.environ["GOOGLE_CLOUD_PROJECT"] = "deepakmichaelprod"
+    if os.getenv("PROJECT_SELLERS"):
+        os.environ["GOOGLE_CLOUD_PROJECT"] = os.environ["PROJECT_SELLERS"]
 if not os.getenv("GOOGLE_CLOUD_LOCATION"):
     os.environ["GOOGLE_CLOUD_LOCATION"] = "us-central1"
 
