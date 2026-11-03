@@ -16,12 +16,12 @@
 
 output "agent_gateway_id" {
   description = "Full resource ID of the Agent Gateway (pass to the agent-engine module as agent_gateway_id)"
-  value       = "projects/${var.project_id}/locations/${var.region}/agentGateways/${var.name}"
+  value       = google_network_services_agent_gateway.this.id
 }
 
 output "agent_gateway_name" {
   description = "Short name of the Agent Gateway"
-  value       = var.name
+  value       = google_network_services_agent_gateway.this.name
 }
 
 output "mtls_endpoint" {

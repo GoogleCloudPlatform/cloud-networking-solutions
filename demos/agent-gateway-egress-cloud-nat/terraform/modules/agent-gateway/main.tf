@@ -23,7 +23,7 @@
  * VPC, where policy-based routes steer it through the Secure Web Proxy before
  * exiting via Cloud NAT with the reserved static IP.
  *
- * IAP REQUEST_AUTHZ and Model Armor CONTENT_AUTHZ extensions are intentionally
+ * Model Armor CONTENT_AUTHZ extensions are intentionally
  * omitted — CUJ2 is scoped to the egress path only. The MCP server is public
  * and unauthenticated (INGRESS_TRAFFIC_ALL Cloud Run), so there is no ingress
  * IAM gate to enforce. See demos/agent-gateway for the ingress-governance demo
@@ -75,7 +75,7 @@ resource "google_compute_firewall" "agent_gateway_psc_i" {
 # The Agent Gateway itself. Google-managed, AGENT_TO_ANYWHERE.
 resource "google_network_services_agent_gateway" "this" {
   project  = var.project_id
-  name     = var.name_prefix
+  name     = var.name
   location = var.region
 
   google_managed {
@@ -84,7 +84,7 @@ resource "google_network_services_agent_gateway" "this" {
 
   registries = [local.registry_uri]
 
-  agent_connectivity_template = "projects/${var.project_number}/locations/us-central1/agentConnectivityTemplates/${google_network_services_agent_connectivity_template.gateway_template.agent_connectivity_template_id}"
+  agent_connectivity_template = "projects/${var.project_number}/locations/${var.region}/agentConnectivityTemplates/${google_network_services_agent_connectivity_template.gateway_template.agent_connectivity_template_id}"
 }
 
 resource "google_network_services_agent_connectivity_template" "gateway_template" {
@@ -97,6 +97,29 @@ resource "google_network_services_agent_connectivity_template" "gateway_template
   egress_network_config {
     network_attachment = google_compute_network_attachment.agent_gateway_na.id
     vpc_egress = "ALL_TRAFFIC"
+  }
+}
+
+resource "google_network_security_authz_policy" "allow_policy" {
+  depends_on     = [time_sleep.wait_for_gateway]
+  project        = var.project_id
+  name           = "${var.name}-iap-policy"
+  location       = var.region
+  policy_profile = "REQUEST_AUTHZ"
+  action         = "ALLOW"
+
+  target {
+    resources = [google_network_services_agent_gateway.this.id]
+  }
+
+  http_rules {
+    to {
+      operations {
+        paths {
+          prefix = "/"
+        }
+      }
+    }
   }
 }
 

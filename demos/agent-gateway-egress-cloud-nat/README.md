@@ -113,6 +113,7 @@ cp example.tfvars terraform.tfvars
 #   project_id      = "YOUR_PROJECT_ID"
 #   organization_id = "YOUR_ORG_NUMERIC_ID"   # gcloud organizations list
 #   region          = "us-central1"
+#   platform_admin_members = ["user:YOUR_EMAIL@example.com"]
 ```
 
 Get the numeric org ID:

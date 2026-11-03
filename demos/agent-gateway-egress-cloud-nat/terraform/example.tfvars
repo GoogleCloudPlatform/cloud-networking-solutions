@@ -23,8 +23,11 @@ project_id = "my-gcp-project-id"
 # GCP organization ID (numeric).
 organization_id = "123456789012"
 
+# The GCP region for resources
+region = "us-central1"
+
 # Members granted demo-wide roles
-platform_admin_members = ["user:admin@example.com"]
+platform_admin_members = []
 
 
 # ==============================================================================
