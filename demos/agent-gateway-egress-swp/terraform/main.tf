@@ -230,31 +230,12 @@ module "agent_gateway" {
 }
 
 # Phase 7: Agent Registry Endpoints — registers Google API endpoints and MCP server,
-# allowing the Agent Gateway to dynamically build its routing table, and grants
-# roles/iap.egressor to the agent principalSet.
+# allowing the Agent Gateway to dynamically build its routing table.
 module "agent_registry_endpoints" {
   source = "../../agent-gateway/terraform/modules/agent-registry-endpoints"
 
   project_id = var.project_id
   location   = var.region
-
-  google_api_endpoints = [
-    "https://agentregistry.googleapis.com",
-    "https://aiplatform.mtls.googleapis.com",
-    "https://aiplatform.googleapis.com",
-    "https://cloudresourcemanager.mtls.googleapis.com",
-    "https://cloudresourcemanager.googleapis.com",
-    "https://iamcredentials.mtls.googleapis.com",
-    "https://iamcredentials.googleapis.com",
-    "https://telemetry.mtls.googleapis.com",
-    "https://telemetry.googleapis.com",
-    "https://oauth2.googleapis.com",
-    "https://{region}-aiplatform.mtls.googleapis.com",
-    "https://{region}-aiplatform.googleapis.com",
-    "https://aiplatform.{region}.rep.googleapis.com",
-    "https://logging.googleapis.com",
-    "https://monitoring.googleapis.com",
-  ]
 
   custom_services = [
     {
@@ -264,15 +245,14 @@ module "agent_registry_endpoints" {
     }
   ]
 
-  mcp_servers             = {}
-  mcp_url_mode            = "cloud_run"
-  mcp_internal_dns_domain = null
-  mcp_service_urls        = {}
-
-  iap_egressor_members = ["principalSet://agents.global.org-${var.organization_id}.system.id.goog/attribute.platformContainer/aiplatform/projects/${module.foundation.project_number}"]
-  mcp_egressor_members = []
-
   depends_on = [module.foundation]
+}
+
+# Grant roles/iap.egressor to Agent Identity in Project
+resource "google_project_iam_member" "agent_identity_iap_egressor" {
+  project = var.project_id
+  role    = "roles/iap.egressor"
+  member  = "principalSet://agents.global.org-${var.organization_id}.system.id.goog/attribute.platformContainer/aiplatform/projects/${module.foundation.project_number}"
 }
 
 # Phase 6: Agent Engine — Agent Identity IAM + optional Reasoning Engine deploy
@@ -300,7 +280,7 @@ module "agent_engine" {
   # Wait for the gateway and registry endpoints to be fully ready before booting the engine.
   engine_depends_on = [
     module.agent_gateway.wait_for_gateway_id,
-    module.agent_registry_endpoints.endpoint_egressor_binding_ids
+    module.agent_registry_endpoints.service_ids,
   ]
 
   depends_on = [module.foundation, module.agent_gateway, module.agent_registry_endpoints]
