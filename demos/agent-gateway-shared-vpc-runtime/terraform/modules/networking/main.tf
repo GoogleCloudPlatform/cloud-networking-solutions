@@ -68,13 +68,13 @@ resource "google_compute_address" "nat" {
   description  = "Static IP for Cloud NAT egress — all Agent Runtime internet traffic exits from this address"
 }
 
-# Cloud Router for NAT. Note: the Secure Web Proxy in next-hop mode also
-# auto-creates its own hidden Cloud Router in the same region. These are
-# separate resources and both coexist safely; the SWP-managed router is
-# deleted automatically when delete_swg_autogen_router_on_destroy = true
-# on the gateway.
+# Cloud Router and NAT for SWP Next-Hop Egress.
+# Pre-creating the SWG router and NAT with endpoint_types = ["ENDPOINT_TYPE_SWG"]
+# and MANUAL_ONLY ensures that 100% of Next-Hop SWP egress exits through the
+# reserved static external IP (google_compute_address.nat), rather than using
+# an ephemeral IP from an auto-generated NAT.
 resource "google_compute_router" "nat_router" {
-  name    = "${var.name_prefix}-nat-router"
+  name    = "swg-autogen-router-${module.vpc.network.network_id}"
   project = var.project_id
   network = module.vpc.self_link
   region  = var.region
@@ -83,10 +83,11 @@ resource "google_compute_router" "nat_router" {
 # Cloud NAT — MANUAL_ONLY so all egress from the VPC uses the reserved static
 # IP above. This is the mechanism that gives the agent a predictable source IP.
 resource "google_compute_router_nat" "nat_gateway" {
-  name                               = "${var.name_prefix}-nat-gateway"
+  name                               = "swg-autogen-nat"
   project                            = var.project_id
   router                             = google_compute_router.nat_router.name
   region                             = var.region
+  endpoint_types                     = ["ENDPOINT_TYPE_SWG"]
   nat_ip_allocate_option             = "MANUAL_ONLY"
   nat_ips                            = [google_compute_address.nat.self_link]
   source_subnetwork_ip_ranges_to_nat = "ALL_SUBNETWORKS_ALL_IP_RANGES"

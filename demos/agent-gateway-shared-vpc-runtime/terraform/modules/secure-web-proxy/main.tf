@@ -132,9 +132,9 @@ resource "google_network_services_gateway" "swp" {
   subnetwork = var.private_subnet_id
 
   # SWP auto-creates a Cloud Router for its own proxy-originated egress.
-  # This flag ensures that hidden router is removed when the gateway is
-  # destroyed, preventing orphaned routers accumulating across re-applies.
-  delete_swg_autogen_router_on_destroy = true
+  # Set to false because the router is explicitly pre-created by the networking module
+  # to guarantee binding to the reserved static NAT IP.
+  delete_swg_autogen_router_on_destroy = false
 
   depends_on = [
     google_network_security_gateway_security_policy_rule.allow_all,
