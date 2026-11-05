@@ -190,7 +190,7 @@ terraform apply
 This provisions:
 - Foundation APIs on all 3 projects and Shared VPC linkage (Governance and Runtime attached to Networking Host).
 - Cross-project IAM:
-  - `roles/compute.networkUser` and `roles/dns.peer` on Host project for Governance and Runtime service agents.
+  - `roles/compute.networkUser`, `roles/dns.peer`, `roles/dns.reader`, and `roles/compute.networkViewer` on Host project for Governance and Runtime service agents.
   - Custom role `ar_agw_cross_project_sa` on Governance project for Runtime Vertex AI service agents.
 - Shared VPC network, subnets, pre-created SWG Cloud NAT with static IP, SWP, and Private DNS in Host project.
 - Model Armor templates in Governance project.
