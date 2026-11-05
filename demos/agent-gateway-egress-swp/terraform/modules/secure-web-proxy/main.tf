@@ -131,10 +131,10 @@ resource "google_network_services_gateway" "swp" {
   network    = local.network_id
   subnetwork = var.private_subnet_id
 
-  # SWP auto-creates a Cloud Router for its own proxy-originated egress.
-  # This flag ensures that hidden router is removed when the gateway is
-  # destroyed, preventing orphaned routers accumulating across re-applies.
-  delete_swg_autogen_router_on_destroy = true
+  # SWG router is pre-created in the networking module with ENDPOINT_TYPE_SWG
+  # and the reserved static NAT IP. Setting this to false ensures Terraform
+  # manages its lifecycle cleanly without destroy conflicts.
+  delete_swg_autogen_router_on_destroy = false
 
   depends_on = [
     google_network_security_gateway_security_policy_rule.allow_all,
