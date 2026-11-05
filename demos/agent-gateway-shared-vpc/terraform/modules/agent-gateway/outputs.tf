@@ -14,7 +14,7 @@
 
 output "agent_gateway_id" {
   description = "Full resource ID of the Agent Gateway (pass to the agent-engine module as agent_gateway_id)"
-  value       = "projects/${var.project_id}/locations/${var.region}/agentGateways/${var.name}"
+  value       = google_network_services_agent_gateway.agent_gateway.id
 }
 
 output "agent_gateway_name" {
@@ -44,8 +44,8 @@ output "registry_uri" {
 }
 
 output "wait_for_gateway_id" {
-  description = "ID of the time_sleep resource — pass as a dependency input to the agent-engine module so the engine is not created until the gateway is ready"
-  value       = time_sleep.wait_for_gateway.id
+  description = "ID of the time_sleep resource — pass as a dependency input to the agent-engine module so the engine is not created until the gateway and its authz policy are ready"
+  value       = time_sleep.wait_for_authz_policy.id
 }
 
 output "template_name" {

@@ -12,13 +12,14 @@ In this topology, enterprise responsibilities are strictly decoupled between two
      - Dedicated PSC-I subnet for Agent Gateway (`10.20.0.0/26`, `purpose = "PRIVATE_SERVICE_CONNECT"`)
      - Dedicated proxy-only subnet for Secure Web Proxy (`10.30.0.0/24`, `purpose = "REGIONAL_MANAGED_PROXY"`)
    - Hosts the **Secure Web Proxy (SWP)** in `NEXT_HOP_ROUTING_MODE`, security policies, and Policy-Based Routes (PBRs).
-   - Hosts the **Cloud Router** and **Cloud NAT** with a reserved static external IP address.
+   - Hosts the pre-created **Cloud Router** and **Cloud NAT** (`ENDPOINT_TYPE_SWG`) with a reserved static external IP address.
    - Hosts the **Private Cloud DNS Zone** for `googleapis.com.` (Private Google Access routing).
    - Manages VPC firewall rules.
 
 2. **Governance Project (Service Project)**:
    - Owns the AI agent workload, gateway governance, and application components.
-   - Hosts the **Agent Gateway** (`AGENT_TO_ANYWHERE`) and **Agent Connectivity Template** (`deployment_model = "CENTRALIZED"`).
+   - Hosts the native **Agent Gateway** (`google_network_services_agent_gateway`, `AGENT_TO_ANYWHERE`) and **Agent Connectivity Template** (`google_network_services_agent_connectivity_template`, `deployment_model = "CENTRALIZED"` with DNS peering to the Shared VPC).
+   - Hosts the native **Agent Gateway Authz Policy** (`google_network_security_authz_policy`).
    - Provisions the **PSC-I Network Attachment** in the service project, bound to the Shared VPC subnet in the Host Project.
    - Hosts the **Agent Registry** endpoints and custom services.
    - Hosts **Model Armor** templates (Request/Response guardrails, Prompt Injection / Jailbreak filters, RAI filters, and DLP templates).
@@ -142,10 +143,10 @@ terraform apply
 This provisions:
 - Foundation APIs on both projects and Shared VPC linkage.
 - Cross-project IAM (`roles/compute.networkUser` and `roles/dns.peer` on Host project).
-- Shared VPC network, subnets, Cloud NAT with static IP, SWP, and Private DNS in Host project.
+- Shared VPC network, subnets, pre-created SWG Cloud NAT with static IP, SWP, and Private DNS in Host project.
 - Model Armor templates in Governance project.
 - Artifact Registry and `bug-tickets-mcp` Cloud Run service in Governance project.
-- PSC-I Network Attachment, Agent Connectivity Template, and Agent Gateway in Governance project.
+- PSC-I Network Attachment, Agent Connectivity Template (with DNS peering), native Agent Gateway, and native AuthzPolicy in Governance project.
 
 ### Step 3: Package Agent & Deploy Reasoning Engine (Phase 2)
 
@@ -211,6 +212,34 @@ gcloud logging read 'resource.type="cloud_run_revision" AND textPayload:"bug-tic
   --format="value(httpRequest.remoteIp)"
 ```
 The IP should match `terraform output -raw nat_static_ip`.
+
+---
+
+## Important Architectural Notes
+
+### Pre-created SWG Cloud Router & Cloud NAT for Static IP Egress
+
+Next-Hop Secure Web Proxy requires a Cloud NAT with `endpoint_types = ["ENDPOINT_TYPE_SWG"]` to route its outbound connections. By default, if no SWG NAT exists, SWP dynamically spins up an internal autogen router and NAT with an ephemeral IP, bypassing any standard VM-scoped Cloud NAT (`ENDPOINT_TYPE_VM`).
+
+To guarantee that 100% of SWP egress uses the reserved static external IP (`<name_prefix>-nat-ip`), the `networking` module pre-creates the router and NAT directly in the Shared VPC Host Project:
+- **Router:** `swg-autogen-router-${module.vpc.network.network_id}`
+- **NAT Gateway:** `swg-autogen-nat` with `endpoint_types = ["ENDPOINT_TYPE_SWG"]`, `nat_ip_allocate_option = "MANUAL_ONLY"`, and `nat_ips = [google_compute_address.nat.self_link]`.
+
+When the SWP gateway initializes, it binds directly to this pre-created router and NAT, ensuring all internet-bound agent traffic emerges with the exact reserved static IP.
+
+### DNS Peering in Agent Connectivity Template
+
+The Agent Connectivity Template configures `dns_peering_config` with:
+- `domains = ["googleapis.com."]`
+- `target_network = trimprefix(var.network_self_link, "https://www.googleapis.com/compute/v1/")`
+
+This forwards all `*.googleapis.com` queries directly from the tenant Agent Runtime to the Shared VPC's private Cloud DNS zone in the Host Project. The zone resolves queries to the `private.googleapis.com` VIP (`199.36.153.8/30`), where a Policy-Based Route (PBR 1500) bypasses SWP and routes the traffic directly over Private Google Access without incurring NAT translation.
+
+### Native Agent Gateway & Authz Policy
+
+The deployment uses the native Terraform resources introduced in Google provider `>= 8.10.0`:
+- `google_network_services_agent_gateway`: Manages the gateway in `google_managed { governed_access_path = "AGENT_TO_ANYWHERE" }` mode, referencing the connectivity template via the numeric project number format.
+- `google_network_security_authz_policy`: Authorizes traffic across the gateway (`policy_profile = "REQUEST_AUTHZ"`, `action = "ALLOW"`).
 
 ---
 

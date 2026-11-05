@@ -98,75 +98,25 @@ resource "google_network_services_agent_connectivity_template" "agent_connectivi
   egress_network_config {
     network_attachment = google_compute_network_attachment.agent_gateway.id
     vpc_egress         = "ALL_TRAFFIC"
+
+    dns_peering_config {
+      domains        = ["googleapis.com."]
+      target_network = trimprefix(var.network_self_link, "https://www.googleapis.com/compute/v1/")
+    }
   }
 }
 
-# The Agent Gateway itself. Linked to the Agent Connectivity Template (ALL_TRAFFIC) via v1 REST API.
-resource "terraform_data" "agent_gateway" {
-  input = {
-    project_id            = var.project_id
-    project_number        = var.project_number
-    region                = var.region
-    agent_gateway_name    = var.name
-    template_name         = google_network_services_agent_connectivity_template.agent_connectivity_template.agent_connectivity_template_id
-    network_attachment_id = google_compute_network_attachment.agent_gateway.id
-    registry_uri          = local.registry_uri
-  }
+# The Agent Gateway itself. Linked to the Agent Connectivity Template (ALL_TRAFFIC).
+resource "google_network_services_agent_gateway" "agent_gateway" {
+  provider                     = google-beta
+  project                      = var.project_id
+  name                         = var.name
+  location                     = var.region
+  agent_connectivity_template = "projects/${var.project_number}/locations/${var.region}/agentConnectivityTemplates/${google_network_services_agent_connectivity_template.agent_connectivity_template.agent_connectivity_template_id}"
+  registries                   = [local.registry_uri]
 
-  provisioner "local-exec" {
-    when    = create
-    command = <<-EOT
-      set -e
-      cd ..
-
-      echo "Creating Agent Gateway via v1 REST API..."
-      ./scripts/manage_agent_gateway.sh create "${self.input.project_id}" "${self.input.region}" "${self.input.agent_gateway_name}" "${self.input.template_name}" "${self.input.registry_uri}"
-
-      echo "Creating allow-all AuthzPolicy YAML config..."
-      cat <<EOF > config/agent-gateway-authz-policy.yaml
-name: projects/${self.input.project_id}/locations/${self.input.region}/authzPolicies/${self.input.agent_gateway_name}-allow-all
-action: ALLOW
-policyProfile: REQUEST_AUTHZ
-target:
-  resources:
-  - projects/${self.input.project_number}/locations/${self.input.region}/agentGateways/${self.input.agent_gateway_name}
-httpRules:
-- when: 'true'
-EOF
-
-      echo "Importing allow-all AuthzPolicy via gcloud..."
-      gcloud network-security authz-policies import "${self.input.agent_gateway_name}-allow-all" \
-        --source="config/agent-gateway-authz-policy.yaml" \
-        --location="${self.input.region}" \
-        --project="${self.input.project_id}"
-    EOT
-  }
-
-  provisioner "local-exec" {
-    when    = destroy
-    command = <<-EOT
-      cd ..
-      echo "Deleting AuthzPolicy..."
-      gcloud network-security authz-policies delete "${self.input.agent_gateway_name}-allow-all" \
-        --location="${self.input.region}" \
-        --project="${self.input.project_id}" \
-        --quiet || true
-
-      echo "Resetting agent-gateway-authz-policy.yaml to placeholder template..."
-      cat <<EOF > config/agent-gateway-authz-policy.yaml
-name: projects/PROJECT_ID/locations/REGION/authzPolicies/agent-gateway-allow-all
-action: ALLOW
-policyProfile: REQUEST_AUTHZ
-target:
-  resources:
-  - projects/PROJECT_NUMBER/locations/REGION/agentGateways/agent-gateway
-httpRules:
-- when: 'true'
-EOF
-
-      echo "Deleting Agent Gateway via v1 REST API..."
-      ./scripts/manage_agent_gateway.sh delete "${self.input.project_id}" "${self.input.region}" "${self.input.agent_gateway_name}" || true
-    EOT
+  google_managed {
+    governed_access_path = "AGENT_TO_ANYWHERE"
   }
 
   depends_on = [
@@ -176,9 +126,37 @@ EOF
   ]
 }
 
-# Allow the Agent Gateway and AuthzPolicy to stabilize before dependent resources
-# reference the gateway ID (e.g. the reasoning engine's agent_gateway_config).
+# Allow the Agent Gateway to stabilize before attaching authz policies.
 resource "time_sleep" "wait_for_gateway" {
-  depends_on      = [terraform_data.agent_gateway]
+  depends_on      = [google_network_services_agent_gateway.agent_gateway]
+  create_duration = "30s"
+}
+
+# Allow-all AuthzPolicy attached to the Agent Gateway.
+# Overrides the default-denied behavior of the Agent Gateway Envoy proxy,
+# delegating L7 inspection and policy enforcement to the customer VPC Secure Web Proxy.
+resource "google_network_security_authz_policy" "allow_all" {
+  provider       = google-beta
+  project        = var.project_id
+  name           = "${var.name}-allow-all"
+  location       = var.region
+  policy_profile = "REQUEST_AUTHZ"
+  action         = "ALLOW"
+
+  target {
+    resources = [google_network_services_agent_gateway.agent_gateway.id]
+  }
+
+  http_rules {
+    when = "true"
+  }
+
+  depends_on = [time_sleep.wait_for_gateway]
+}
+
+# Wait for the AuthzPolicy to propagate before dependent resources (e.g. Reasoning Engine)
+# attempt to route traffic through the gateway.
+resource "time_sleep" "wait_for_authz_policy" {
+  depends_on      = [google_network_security_authz_policy.allow_all]
   create_duration = "30s"
 }
