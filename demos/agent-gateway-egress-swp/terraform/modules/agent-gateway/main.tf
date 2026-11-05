@@ -128,7 +128,7 @@ resource "google_network_services_agent_gateway" "agent_gateway" {
   project                      = var.project_id
   name                         = var.name
   location                     = var.region
-  agent_connectivity_template = google_network_services_agent_connectivity_template.agent_connectivity_template.id
+  agent_connectivity_template = "projects/${var.project_number}/locations/${var.region}/agentConnectivityTemplates/${google_network_services_agent_connectivity_template.agent_connectivity_template.agent_connectivity_template_id}"
   registries                   = [local.registry_uri]
 
   google_managed {
