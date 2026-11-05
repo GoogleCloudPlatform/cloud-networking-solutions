@@ -82,17 +82,17 @@ The demo has **two distinct egress paths** from the Reasoning Engine:
 | **Agent Runtime** | Hosts the ADK-based software-bug-agent; all connections egress through the Agent Gateway | `google_vertex_ai_reasoning_engine` in `modules/agent-engine/main.tf` |
 | **Agent Gateway binding** | `agent_gateway_config.agent_to_anywhere_config.agent_gateway` routes ALL engine egress through the customer VPC | same resource, `agent_gateway_config` block |
 | **PSC-Interface** | Dedicated network attachment connecting Agent Runtime to the customer VPC | `google_compute_network_attachment` in `modules/agent-gateway/main.tf` |
-| **Agent Gateway** | `AGENT_TO_ANYWHERE` gateway terminates PSC-I and injects traffic into the Agent Gateway subnet | `terraform_data.agent_gateway` in `modules/agent-gateway/main.tf` |
-| **Agent Gateway Authz Policy** | Overrides the gateway's internal default-deny behavior and allows all traffic to flow to the customer VPC | `terraform_data.agent_gateway` in `modules/agent-gateway/main.tf` |
+| **Agent Gateway** | `AGENT_TO_ANYWHERE` gateway terminates PSC-I and injects traffic into the Agent Gateway subnet | `google_network_services_agent_gateway` in `modules/agent-gateway/main.tf` |
+| **Agent Gateway Authz Policy** | Overrides the gateway's internal default-deny behavior and allows all traffic to flow to the customer VPC | `google_network_security_authz_policy` in `modules/agent-gateway/main.tf` |
 | **Agent Registry Endpoints** | Registers Google APIs and the MCP server, enabling the Gateway to build its dynamic routing table | `module.agent_registry_endpoints` in `terraform/main.tf` |
-| **Agent Connectivity Template** | Forces all traffic (including DNS) from the Reasoning Engine to exit through the VPC via `ALL_TRAFFIC` mode | `google_network_services_agent_connectivity_template` in `modules/agent-gateway/main.tf` |
+| **Agent Connectivity Template** | Forces all traffic from the Reasoning Engine to exit through the VPC via `ALL_TRAFFIC` mode and peers `googleapis.com.` to VPC Cloud DNS | `google_network_services_agent_connectivity_template` in `modules/agent-gateway/main.tf` |
 | **Private Google Access** | Enabled on the Agent Gateway subnet so Google API traffic can exit internally without NAT | `private_ip_google_access = true` on `google_compute_subnetwork.agent_gateway` in `modules/networking/main.tf` |
 | **DNS override (googleapis)** | Private Cloud DNS zones natively intercept and redirect `*.googleapis.com` to the `private.googleapis.com` VIP (`199.36.153.8/30`) | `google_dns_managed_zone.googleapis` in `modules/networking/main.tf` |
 | **Policy-Based Route (googleapis bypass)** | Priority 1500 — lets traffic destined for `199.36.153.8/30` take the default route (Private Google Access), bypassing the SWP | `google_network_connectivity_policy_based_route.googleapis_restricted_bypass` in `modules/secure-web-proxy/main.tf` |
 | **Policy-Based Route (forced SWP)** | Priority 2000 — redirects all remaining Agent Gateway subnet egress (src `10.20.0.0/26`, dst `0.0.0.0/0`) to the SWP gateway IP | `google_network_connectivity_policy_based_route.agw_to_swp` in `modules/secure-web-proxy/main.tf` |
 | **Policy-Based Route (anti-loop)** | Priority 1000 — prevents SWP's own proxy-originated connections from looping back through the SWP | `google_network_connectivity_policy_based_route.swp_anti_loop` in `modules/secure-web-proxy/main.tf` |
 | **Secure Web Proxy** | L7 proxy in `NEXT_HOP_ROUTING_MODE`; applies `ALLOW` security policy; forwards traffic to the default internet route | `google_network_services_gateway` in `modules/secure-web-proxy/main.tf` |
-| **Cloud NAT** | SNAT with a single reserved static external IP; the MCP server sees this IP | `google_compute_router_nat` + `google_compute_address.nat` in `modules/networking/main.tf` |
+| **Cloud NAT** | Pre-created SWG NAT (`ENDPOINT_TYPE_SWG`) with a reserved static external IP; all SWP egress exits via this address | `google_compute_router_nat` + `google_compute_address.nat` in `modules/networking/main.tf` |
 | **bug-tickets-mcp** | Public Cloud Run service (`INGRESS_TRAFFIC_ALL`); no IAP or auth; logs the caller's IP in `X-Forwarded-For` | `modules/mcp-cloud-run` + `images.tf` (Cloud Build from source) |
 
 ---
@@ -129,7 +129,7 @@ The demo has **two distinct egress paths** from the Reasoning Engine:
       --role="roles/serviceusage.serviceUsageConsumer"
     ```
     *(Alternatively, add your account to `platform_admin_members = ["user:you@example.com"]` in `terraform.tfvars`, and Terraform will manage these grants automatically.)*
-- Tools: `gcloud` (authenticated), `terraform >= 1.5`, `uv` (Python package manager).
+- Tools: `gcloud` (authenticated), `terraform >= 1.12.2`, `uv` (Python package manager).
 - The project must be under a GCP **organization** (required for Agent Identity
   IAM principal sets).
 - **Bootstrap APIs:** In a new GCP project, the Cloud Resource Manager and Service Usage APIs must be enabled via `gcloud` before Terraform can read project metadata or manage services.
@@ -354,17 +354,15 @@ the **customer-deployed SWP** this demo provisions in `modules/secure-web-proxy`
 Do not confuse the two: the customer SWP is the one enforcing your security
 policy and the one visible in your VPC's policy-based routes.
 
-### SWP auto-creates a hidden Cloud Router
+### Pre-created SWG Cloud Router & Cloud NAT for Static IP Egress
 
-When the `google_network_services_gateway` (SWP) is created, GCP automatically
-provisions a Cloud Router for the SWP's own proxy-originated egress. This
-hidden router is separate from the explicit Cloud Router created by the
-`networking` module for Cloud NAT. Both routers coexist in the same VPC and
-region without conflict. `delete_swg_autogen_router_on_destroy = true` is set in
-the SWP module to clean up the hidden router on `terraform destroy`.
+Next-Hop Secure Web Proxy requires a Cloud NAT with `endpoint_types = ["ENDPOINT_TYPE_SWG"]` to route its outbound connections. By default, if no SWG NAT exists, SWP dynamically spins up an internal autogen router and NAT with an ephemeral IP, bypassing any standard VM-scoped Cloud NAT (`ENDPOINT_TYPE_VM`).
 
-If you see an unexpected Cloud Router in the Console (named something like
-`swg-autogen-router-...`), this is it — leave it alone.
+To guarantee that 100% of SWP egress uses the reserved static external IP (`<name_prefix>-nat-ip`), the `networking` module pre-creates the router and NAT directly:
+- **Router:** `swg-autogen-router-${module.vpc.network.network_id}`
+- **NAT Gateway:** `swg-autogen-nat` with `endpoint_types = ["ENDPOINT_TYPE_SWG"]`, `nat_ip_allocate_option = "MANUAL_ONLY"`, and `nat_ips = [google_compute_address.nat.self_link]`.
+
+When the SWP gateway initializes, it binds directly to this pre-created router and NAT, ensuring all internet-bound agent traffic emerges with the exact reserved static IP.
 
 ### PSC-I subnet must be /26 or larger
 
@@ -419,11 +417,12 @@ export PROJECT_ID=$(gcloud config get-value project)
 export REGION=us-central1
 
 # 1. Delete the Agent Gateway if it still exists
-gcloud alpha network-services agent-gateways delete agent-gateway \
+gcloud network-services agent-gateways delete agent-gateway \
   --location="${REGION}" --project="${PROJECT_ID}" --quiet || true
 
 # 2. Delete the Connectivity Template if it still exists
-./scripts/delete_connectivity_template.sh "${PROJECT_ID}" "${REGION}" "cuj2-template" || true
+gcloud network-services agent-connectivity-templates delete "${TEMPLATE_NAME}" \
+  --location="${REGION}" --project="${PROJECT_ID}" --quiet || true
 
 # 3. Wait for the tenant PSC endpoint to detach, then delete the Network Attachment
 echo "Waiting for PSC endpoints to release from agent-gateway-na..."
