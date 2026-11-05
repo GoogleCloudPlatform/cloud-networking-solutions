@@ -142,7 +142,7 @@ terraform apply
 
 This provisions:
 - Foundation APIs on both projects and Shared VPC linkage.
-- Cross-project IAM (`roles/compute.networkUser` and `roles/dns.peer` on Host project).
+- Cross-project IAM (`roles/compute.networkUser`, `roles/dns.peer`, `roles/dns.reader`, and `roles/compute.networkViewer` on Host project).
 - Shared VPC network, subnets, pre-created SWG Cloud NAT with static IP, SWP, and Private DNS in Host project.
 - Model Armor templates in Governance project.
 - Artifact Registry and `bug-tickets-mcp` Cloud Run service in Governance project.

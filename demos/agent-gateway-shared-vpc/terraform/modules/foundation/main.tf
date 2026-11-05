@@ -210,6 +210,39 @@ resource "google_project_iam_member" "host_agentgateway_dns_peer" {
   depends_on = [google_compute_shared_vpc_service_project.service]
 }
 
+resource "google_project_iam_member" "host_agentgateway_dns_reader" {
+  count      = var.enable_psc_interface ? 1 : 0
+  project    = module.networking_project.project_id
+  role       = "roles/dns.reader"
+  member     = "serviceAccount:service-${module.governance_project.number}@gcp-sa-agentgateway.iam.gserviceaccount.com"
+  depends_on = [google_compute_shared_vpc_service_project.service]
+}
+
+resource "google_project_iam_member" "host_agentgateway_network_viewer" {
+  count      = var.enable_psc_interface ? 1 : 0
+  project    = module.networking_project.project_id
+  role       = "roles/compute.networkViewer"
+  member     = "serviceAccount:service-${module.governance_project.number}@gcp-sa-agentgateway.iam.gserviceaccount.com"
+  depends_on = [google_compute_shared_vpc_service_project.service]
+}
+
+# Network Services Service Identity (Service Extensions / Agent Gateway target network validation)
+resource "google_project_iam_member" "host_networkservices_dns_reader" {
+  count      = var.enable_psc_interface ? 1 : 0
+  project    = module.networking_project.project_id
+  role       = "roles/dns.reader"
+  member     = "serviceAccount:${google_project_service_identity.network_services.email}"
+  depends_on = [google_compute_shared_vpc_service_project.service]
+}
+
+resource "google_project_iam_member" "host_networkservices_network_viewer" {
+  count      = var.enable_psc_interface ? 1 : 0
+  project    = module.networking_project.project_id
+  role       = "roles/compute.networkViewer"
+  member     = "serviceAccount:${google_project_service_identity.network_services.email}"
+  depends_on = [google_compute_shared_vpc_service_project.service]
+}
+
 # Agent Gateway Egress Proxy Service Agent (DEP - gcp-sa-dep)
 resource "google_project_iam_member" "host_agentgateway_dep_network_user" {
   count      = var.enable_psc_interface ? 1 : 0
