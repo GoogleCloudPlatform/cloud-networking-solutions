@@ -247,16 +247,41 @@ for chunk in agent.stream_query(message='List all open P1 bugs assigned to alice
 
 #### Confirm Egress through SWP and Static NAT IP
 
-Check the Cloud Run logs in the Governance project to confirm the request to `bug-tickets-mcp` originated from the reserved static IP:
+1. **Inspect Secure Web Proxy (SWP) Access Logs**:
+   The customer-deployed Secure Web Proxy in the Host Project logs every intercepted connection under `networkservices.googleapis.com/Gateway`. Confirm that the request from the Agent Gateway PSC-I (`10.20.0.2`) was evaluated and allowed:
+   ```bash
+   gcloud logging read \
+     'resource.type="networkservices.googleapis.com/Gateway" AND resource.labels.gateway_name="agw-svpc-swp"' \
+     --project=$(terraform output -raw networking_project_id) \
+     --limit=5 \
+     --format="table(timestamp, httpRequest.remoteIp, jsonPayload.enforcedGatewaySecurityPolicy.serverNameIndication, jsonPayload.enforcedGatewaySecurityPolicy.matchedRules[0].action)"
+   ```
+   *Expected output:* `remoteIp` is the PSC-I subnet IP (`10.20.0.2:PORT`), `serverNameIndication` is `bug-tickets-mcp-dtzlyat6da-uc.a.run.app`, and `action` is `ALLOWED`.
 
-```bash
-gcloud logging read 'resource.type="cloud_run_revision" AND resource.labels.service_name="bug-tickets-mcp"' \
-  --project=$(terraform output -raw governance_project_id) \
-  --limit=5 \
-  --format="value(httpRequest.remoteIp)"
-```
+2. **Verify Active Cloud NAT Egress Mappings**:
+   Confirm that the Cloud NAT gateway (`swg-autogen-nat`) in the Host Project is actively mapping egress connections using the reserved static IP:
+   ```bash
+   gcloud compute routers get-status \
+     $(gcloud compute routers list --project=$(terraform output -raw networking_project_id) --filter="name ~ swg-autogen" --format="value(name)") \
+     --region=us-central1 \
+     --project=$(terraform output -raw networking_project_id) \
+     --format="json(result.natStatus)"
+   ```
+   *Expected output:* `userAllocatedNatIps` shows `[ "<nat_static_ip>" ]` and `numVmEndpointsWithNatMappings` is `>= 1`.
 
-The IP should match `terraform output -raw nat_static_ip`.
+3. **Verify Cloud Run MCP Server Logs**:
+   Confirm that the MCP server received and handled the request:
+   ```bash
+   gcloud logging read \
+     'resource.type="cloud_run_revision" AND resource.labels.service_name="bug-tickets-mcp" AND textPayload:"/mcp"' \
+     --project=$(terraform output -raw governance_project_id) \
+     --limit=5 \
+     --format="value(textPayload)"
+   ```
+   *Expected output:* HTTP `200 OK` entries for `POST /mcp` and `GET /mcp`.
+
+> [!NOTE]
+> In Cloud Run request logs (`run.googleapis.com/requests`), Google Front End (GFE) sets `httpRequest.remoteIp` to `0.0.0.0` for traffic routed internally across Google's Andromeda SDN between GCP services and proxies in the same region. End-to-end egress path governance is verified via the SWP gateway access logs and Cloud NAT status above.
 
 ---
 
