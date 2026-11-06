@@ -191,7 +191,41 @@ curl -s -H "Authorization: Bearer $(gcloud auth print-access-token)" \
 ```
 
 ### 3. Verify Agent Runtime Egress via SWP & Static IP
-Run a test query against the Reasoning Engine:
+
+To verify end-to-end egress, send a test query to the Reasoning Engine requesting information from the MCP server (e.g., `list_tickets`).
+
+#### Option A: Direct REST API via `curl` (Recommended - no Python dependencies required)
+
+Call the Vertex AI Reasoning Engine `:streamQuery` endpoint directly:
+
+```bash
+curl -s -X POST \
+  -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+  -H "Content-Type: application/json" \
+  "https://us-central1-aiplatform.googleapis.com/v1beta1/projects/$(terraform output -raw governance_project_id)/locations/us-central1/reasoningEngines/$(terraform output -raw reasoning_engine_id):streamQuery" \
+  -d '{
+    "class_method": "stream_query",
+    "input": {
+      "message": "List all open P1 bugs assigned to alice@quantumroast.example.",
+      "user_id": "test-user"
+    }
+  }'
+```
+
+The response will stream JSON chunks showing tool calls to `list_tickets` and the final answer retrieved from the MCP server.
+
+#### Option B: Python via Vertex AI SDK
+
+If querying programmatically with Python, ensure `google-cloud-aiplatform` with Agent Engine support is installed in your Python environment:
+
+```bash
+pip install "google-cloud-aiplatform[agent_engines]"
+```
+
+*(Alternatively, you can run inside the virtual environment created in Phase 2: `cd ../src/software-bug-agent && uv run python ...`)*
+
+Then execute:
+
 ```bash
 python3 -c "
 import vertexai
@@ -199,18 +233,29 @@ from vertexai.preview import reasoning_engines
 
 vertexai.init(project='$(terraform output -raw governance_project_id)', location='us-central1')
 agent = reasoning_engines.ReasoningEngine('$(terraform output -raw reasoning_engine_id)')
-response = agent.query(input='List the latest open bug tickets')
-print(response)
+for chunk in agent.stream_query(message='List all open P1 bugs assigned to alice@quantumroast.example.', user_id='test-user'):
+    print(chunk)
 "
 ```
 
-Check the Cloud Run logs in the Governance project to confirm the request originated from the Cloud NAT static IP:
+#### Option C: Google Cloud Console UI
+
+1. Open the GCP Console and select the Governance Project (`terraform output -raw governance_project_id`).
+2. Go to **Vertex AI > Agent Engine** (or **Reasoning Engines**).
+3. Select the deployed agent (`software-bug-triage-agent`).
+4. In the **Query / Test** tab, submit: `List all open P1 bugs assigned to alice@quantumroast.example.`
+
+#### Confirm Egress through SWP and Static NAT IP
+
+Check the Cloud Run logs in the Governance project to confirm the request to `bug-tickets-mcp` originated from the reserved static IP:
+
 ```bash
-gcloud logging read 'resource.type="cloud_run_revision" AND textPayload:"bug-tickets-mcp"' \
+gcloud logging read 'resource.type="cloud_run_revision" AND resource.labels.service_name="bug-tickets-mcp"' \
   --project=$(terraform output -raw governance_project_id) \
   --limit=5 \
   --format="value(httpRequest.remoteIp)"
 ```
+
 The IP should match `terraform output -raw nat_static_ip`.
 
 ---

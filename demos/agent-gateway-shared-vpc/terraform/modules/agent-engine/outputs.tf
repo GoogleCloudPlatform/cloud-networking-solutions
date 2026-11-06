@@ -23,3 +23,8 @@ output "reasoning_engine_name" {
   description = "Full resource name of the deployed reasoning engine (projects/.../reasoningEngines/<id>). Null unless deploy_reasoning_engine is true."
   value       = var.deploy_reasoning_engine ? google_vertex_ai_reasoning_engine.bug_triage[0].name : null
 }
+
+output "reasoning_engine_id" {
+  description = "Resource ID of the deployed reasoning engine (alias for reasoning_engine_name). Null unless deploy_reasoning_engine is true."
+  value       = var.deploy_reasoning_engine ? google_vertex_ai_reasoning_engine.bug_triage[0].name : null
+}

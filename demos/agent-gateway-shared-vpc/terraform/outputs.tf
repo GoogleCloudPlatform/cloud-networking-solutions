@@ -168,3 +168,8 @@ output "reasoning_engine_name" {
   description = "Resource name of the deployed Vertex AI Reasoning Engine (null if deploy_reasoning_engine = false)"
   value       = module.agent_engine.reasoning_engine_name
 }
+
+output "reasoning_engine_id" {
+  description = "Resource ID of the deployed Vertex AI Reasoning Engine (alias for reasoning_engine_name)"
+  value       = module.agent_engine.reasoning_engine_name
+}
