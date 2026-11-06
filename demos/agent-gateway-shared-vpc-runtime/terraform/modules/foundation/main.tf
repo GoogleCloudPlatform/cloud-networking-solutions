@@ -32,6 +32,8 @@ module "governance_project" {
   project_reuse = {}
 
   services = [
+    "cloudresourcemanager.googleapis.com",
+    "serviceusage.googleapis.com",
     "compute.googleapis.com",
     "storage.googleapis.com",
     "storage-api.googleapis.com",
@@ -69,6 +71,8 @@ module "networking_project" {
   project_reuse = {}
 
   services = [
+    "cloudresourcemanager.googleapis.com",
+    "serviceusage.googleapis.com",
     "compute.googleapis.com",
     "networkservices.googleapis.com",
     "networksecurity.googleapis.com",
@@ -91,6 +95,8 @@ module "runtime_project" {
   project_reuse = {}
 
   services = [
+    "cloudresourcemanager.googleapis.com",
+    "serviceusage.googleapis.com",
     "compute.googleapis.com",
     "storage.googleapis.com",
     "storage-api.googleapis.com",
