@@ -283,6 +283,7 @@ module "agent_engine" {
 
   project_id     = var.project_id
   project_number = module.foundation.project_number
+  region         = var.region
 
   organization_id        = var.organization_id
   platform_admin_members = var.platform_admin_members
