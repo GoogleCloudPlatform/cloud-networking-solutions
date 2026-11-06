@@ -347,18 +347,6 @@ resource "google_model_armor_floorsetting" "mcp_floor_setting" {
   }
 }
 
-# Enable Model Armor content security scanning on the MCP server
-# No Terraform resource exists for this, so we use a null_resource with local-exec
-resource "null_resource" "mcp_content_security" {
-  count = var.enable_model_armor && var.enable_mcp_floor_setting ? 1 : 0
-
-  provisioner "local-exec" {
-    command = "gcloud beta services mcp content-security add modelarmor.googleapis.com --project=${var.project_id}"
-  }
-
-  depends_on = [google_model_armor_floorsetting.mcp_floor_setting]
-}
-
 # =============================================================================
 # Vertex AI Service Agent IAM Binding
 # Grants roles/modelarmor.user to the AI Platform service agent so Vertex AI
