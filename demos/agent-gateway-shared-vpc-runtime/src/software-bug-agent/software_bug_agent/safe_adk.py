@@ -109,6 +109,10 @@ class SafeAdkApp(AdkApp):
     def set_up(self) -> None:
         _diagnose_network()
         super().set_up()
+        for runner_attr in ("runner", "in_memory_runner"):
+            runner = self._tmpl_attrs.get(runner_attr)
+            if runner is not None and hasattr(runner, "auto_create_session"):
+                runner.auto_create_session = True
 
     def project_id(self) -> Optional[str]:
         return (
