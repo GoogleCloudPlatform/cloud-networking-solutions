@@ -292,6 +292,15 @@ resource "google_project_iam_member" "gov_aiplatform_re_networkservices_viewer" 
   depends_on = [time_sleep.aiplatform_identity_propagation]
 }
 
+# Agent Gateway Control Plane Service Agent in Governance Project
+# Requires compute.networkUser on the Governance project to inspect the PSC-I Network Attachment
+resource "google_project_iam_member" "gov_agentgateway_network_user" {
+  count   = var.enable_psc_interface ? 1 : 0
+  project = module.governance_project.project_id
+  role    = "roles/compute.networkUser"
+  member  = "serviceAccount:service-${module.governance_project.number}@gcp-sa-agentgateway.iam.gserviceaccount.com"
+}
+
 # -----------------------------------------------------------------------------
 # 7. Runtime Project Service Identities
 # -----------------------------------------------------------------------------
