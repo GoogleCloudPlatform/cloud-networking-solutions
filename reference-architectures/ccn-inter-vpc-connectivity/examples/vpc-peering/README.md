@@ -8,7 +8,9 @@ The deployment is split into two sequential stages:
 1. **[01-foundation](01-foundation)**: Foundation hierarchy, projects, and Shared VPC enablement.
 2. **[02-networking](02-networking)**: Core networking, VPCs, VPNs, Firewall Policies, and Hub-and-Spoke VPC Network Peerings (`vpc-p-transit` ↔ `vpc-p-svpc-app-01`, `vpc-p-svpc-app-02`, and `vpc-p-svpc-app-03`).
 
-For architecture diagrams and a breakdown of the resource hierarchy and network topology, see the **[Root Repository Documentation (`README.md`)](../../README.md#resource-hierarchy)**.
+For a complete breakdown of the resource hierarchy and networking specifications, see the **[Root Architecture Documentation (`README.md`)](../../README.md#resource-hierarchy)**.
+
+![VPC Peering Network Topology](../../images/network_topology_vpc_peering.png)
 
 ---
 

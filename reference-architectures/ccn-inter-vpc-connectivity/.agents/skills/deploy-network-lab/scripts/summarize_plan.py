@@ -25,7 +25,7 @@ def summarize_plan(json_path):
         sys.exit(1)
 
     resource_changes = plan_data.get('resource_changes', [])
-    
+
     if not resource_changes:
         print("No resource changes found in the plan.")
         return
@@ -33,12 +33,12 @@ def summarize_plan(json_path):
     summary = defaultdict(lambda: defaultdict(int))
     total_by_action = defaultdict(int)
     destructive_addresses = []
-    
+
     for change in resource_changes:
         resource_type = change.get('type')
         address = change.get('address', resource_type)
         actions = change.get('change', {}).get('actions', [])
-        
+
         action_type = "no-op"
         if "create" in actions and "delete" in actions:
             action_type = "replace"
@@ -52,7 +52,7 @@ def summarize_plan(json_path):
             destructive_addresses.append((action_type, address))
         elif "read" in actions:
             action_type = "read"
-            
+
         if action_type != "no-op" and action_type != "read":
             summary[resource_type][action_type] += 1
             total_by_action[action_type] += 1
@@ -62,7 +62,7 @@ def summarize_plan(json_path):
     for res_type, actions_dict in sorted(summary.items()):
         actions_str = ", ".join([f"{act}: {count}" for act, count in sorted(actions_dict.items())])
         print(f"{res_type} -> {actions_str}")
-        
+
     print("=========================")
     print("Total Changes:")
     for action, count in sorted(total_by_action.items()):
@@ -79,5 +79,5 @@ if __name__ == '__main__':
     if len(sys.argv) < 2:
         print("Usage: python summarize_plan.py <path_to_plan_json>")
         sys.exit(1)
-        
+
     summarize_plan(sys.argv[1])

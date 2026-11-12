@@ -8,8 +8,7 @@ description: >-
   prerequisites and IAM permissions; describe the lab architecture or resources; verify
   VPN, BGP, NCC spoke, VPC peering, or firewall policy status; or destroy, tear down, or
   clean up a deployed lab. Don't use for authoring or refactoring Terraform module source
-  code under modules/, running Docker CFT lint or integration tests via the Makefile, or
-  reviewing pull request diffs.
+  code under modules/ or reviewing pull request diffs.
 ---
 
 # Deploy Network Lab Skill

@@ -1,7 +1,7 @@
 # LLM rules and guidance
 
 ## Official Documentation & Module Registries
-- Terraform Provider Docs: Whenever you are writing or modifying a `google` or `google-beta` resource, you **MUST** refer to the official provider documentation to verify current arguments, deprecations, and syntax: 
+- Terraform Provider Docs: Whenever you are writing or modifying a `google` or `google-beta` resource, you **MUST** refer to the official provider documentation to verify current arguments, deprecations, and syntax:
   - `https://registry.terraform.io/providers/hashicorp/google/latest/docs`
 - Google Cloud Modules: Before generating complex infrastructure from scratch, check if an official Google Cloud Terraform module exists. Always prioritize using or referencing modules from these official namespaces:
   - `https://registry.terraform.io/namespaces/terraform-google-modules`

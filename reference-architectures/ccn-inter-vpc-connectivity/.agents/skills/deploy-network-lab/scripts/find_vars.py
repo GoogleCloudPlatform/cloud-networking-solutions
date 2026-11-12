@@ -23,13 +23,13 @@ def find_variables_without_defaults(file_path):
     state = 'normal'
     i = 0
     n = len(content)
-    
+
     clean_content = []
-    
+
     while i < n:
         char = content[i]
         next_char = content[i+1] if i + 1 < n else ''
-        
+
         if state == 'normal':
             if char == '/' and next_char == '*':
                 state = 'block_comment'
@@ -73,19 +73,19 @@ def find_variables_without_defaults(file_path):
                 i += 1
 
     clean_str = "".join(clean_content)
-    
+
     pattern = re.compile(r'variable\s+"([^"]*)"\s+\{')
-    
+
     required_vars = []
     pos = 0
     while True:
         match = pattern.search(clean_str, pos)
         if not match:
             break
-        
+
         var_name = match.group(1)
         start_body = match.end()
-        
+
         brace_count = 1
         end_body = start_body
         while brace_count > 0 and end_body < len(clean_str):
@@ -95,7 +95,7 @@ def find_variables_without_defaults(file_path):
             elif c == '}':
                 brace_count -= 1
             end_body += 1
-            
+
         if brace_count == 0:
             var_body = clean_str[start_body:end_body-1]
             var_body_no_strings = re.sub(r'"[^"\\]*(?:\\.[^"\\]*)*"', '""', var_body)
@@ -114,9 +114,9 @@ def find_variables_without_defaults(file_path):
                 required_vars.append(var_name)
         else:
             break
-            
+
         pos = end_body
-        
+
     return required_vars
 
 
@@ -124,7 +124,7 @@ if __name__ == '__main__':
     if len(sys.argv) < 2:
         print("Usage: python find_vars.py <path_to_variables.tf> [<path_to_variables.tf> ...]")
         sys.exit(1)
-    
+
     for file_path in sys.argv[1:]:
         required = find_variables_without_defaults(file_path)
         print(f"Required variables in {file_path}:")

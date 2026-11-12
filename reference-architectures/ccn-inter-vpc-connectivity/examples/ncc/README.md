@@ -8,7 +8,9 @@ The deployment is split into two sequential stages:
 1. **[01-foundation](01-foundation)**: Foundation hierarchy, projects, and Shared VPC enablement.
 2. **[02-networking](02-networking)**: Core networking, VPCs, VPNs, Firewall Policies, and NCC Hub & Spokes.
 
-For architecture diagrams and a breakdown of the resource hierarchy and network topology, see the **[Root Repository Documentation (`README.md`)](../../README.md#resource-hierarchy)**.
+For a complete breakdown of the resource hierarchy and networking specifications, see the **[Root Architecture Documentation (`README.md`)](../../README.md#resource-hierarchy)**.
+
+![NCC Network Topology](../../images/network_topology_ncc.png)
 
 ---
 

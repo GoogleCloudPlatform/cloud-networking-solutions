@@ -43,14 +43,8 @@ crash.log
 # .tfvars files are managed as part of configuration and so should be included in
 # version control.
 **/*.tfvars
-**/provider.tf
-**/providers.tf
-
 
 credentials.json
-
-# tf lock file
-.terraform.lock.hcl
 
 # Temporary plan artifacts
 **/tfplan
