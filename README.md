@@ -14,6 +14,9 @@ This repository is organized into the following main directories:
 Contains complete, end-to-end reference architectures demonstrating best practices for cloud networking solutions.
 
 *   **[Networking for AI Inference](reference-architectures/networking-for-ai-inference)**: Demonstrates how to set up a secure, scalable networking infrastructure for AI inference workloads on Google Cloud, including GKE, Apigee, and Vertex AI.
+*   **[Cross-Cloud Network (CCN) Inter-VPC Connectivity](reference-architectures/ccn-inter-vpc-connectivity)**: Demonstrates how to deploy a multi-region Google Cloud landing zone (`01-foundation`) and hybrid networking architecture (`02-networking`) with HA VPN, dynamic BGP routing, and Hierarchical/Global Network Firewall Policies across two inter-VPC connectivity patterns:
+    *   **[Network Connectivity Center (NCC)](reference-architectures/ccn-inter-vpc-connectivity/examples/ncc)**: Centralized hub-and-spoke routing with an NCC mesh hub, VPC spokes, and hybrid HA VPN spokes.
+    *   **[Hub-and-Spoke VPC Network Peering](reference-architectures/ccn-inter-vpc-connectivity/examples/vpc-peering)**: Bidirectional VPC Network Peering between a transit hub VPC and application Shared VPC spokes with custom route import/export.
 
 ## [Demos](demos)
 
