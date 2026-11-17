@@ -1,0 +1,103 @@
+# Copyright 2026 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     https://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+variable "project_id" {
+  description = "The GCP project ID"
+  type        = string
+}
+
+variable "location" {
+  description = "The GCP location for the Agent Registry"
+  type        = string
+}
+
+variable "google_api_endpoints" {
+  description = "Google API endpoint URLs registered as interfaces under a single \"googleapis\" Agent Registry service. A \"{region}\" token is replaced with var.location."
+  type        = list(string)
+  default = [
+    "https://agentregistry.googleapis.com",
+    "https://aiplatform.mtls.googleapis.com",
+    "https://cloudresourcemanager.mtls.googleapis.com",
+    "https://iamcredentials.mtls.googleapis.com",
+    "https://telemetry.mtls.googleapis.com",
+    "https://{region}-aiplatform.mtls.googleapis.com",
+    "https://{region}-aiplatform.googleapis.com",
+    "https://aiplatform.{region}.rep.googleapis.com",
+  ]
+}
+
+variable "custom_services" {
+  description = "List of custom services to register"
+  type = list(object({
+    id           = string
+    display_name = string
+    url          = string
+    description  = optional(string)
+  }))
+  default = [
+    {
+      id           = "github"
+      display_name = "Github"
+      url          = "https://github.com"
+    }
+  ]
+}
+
+variable "mcp_servers" {
+  description = "Map of MCP service name -> registration metadata. The map key becomes the Agent Registry service ID. Every entry must set tool_spec_path to an existing toolspec.json (validated at plan time); display_name defaults to the map key when null."
+  type = map(object({
+    display_name   = optional(string)
+    description    = optional(string)
+    tool_spec_path = optional(string)
+  }))
+  default = {}
+}
+
+variable "mcp_url_mode" {
+  description = "URL strategy for MCP server registration. 'cloud_run' registers the *.run.app URL from mcp_service_urls."
+  type        = string
+  default     = "internal_lb"
+  validation {
+    condition     = contains(["cloud_run"], var.mcp_url_mode)
+    error_message = "mcp_url_mode must be 'cloud_run'."
+  }
+}
+
+variable "mcp_service_urls" {
+  description = "Map of MCP service name -> *.run.app URL. Pass module.mcp_services.service_urls. Required when mcp_url_mode = 'cloud_run'; must contain a URL for every key in mcp_servers."
+  type        = map(string)
+  default     = {}
+}
+
+variable "iap_egressor_members" {
+  description = "Principals granted roles/iap.egressor on each registered endpoint (the NO_SPEC google_apis and custom services). Typically the Agent Identity principalSet. Empty disables the bindings."
+  type        = list(string)
+  default     = []
+}
+
+variable "mcp_egressor_members" {
+  description = "Principals granted roles/iap.egressor on each registered MCP server. Typically the per-agent identity of the deployed reasoning engine. Empty disables the MCP bindings."
+  type        = list(string)
+  default     = []
+}
+
+variable "mcp_egressor_conditions" {
+  description = "Optional IAM condition per MCP server (keyed by service_id) applied to that server's egressor binding, e.g. restricting corporate-email to read-only tools. Servers absent from the map get an unconditional binding."
+  type = map(object({
+    expression  = string
+    title       = string
+    description = optional(string)
+  }))
+  default = {}
+}
