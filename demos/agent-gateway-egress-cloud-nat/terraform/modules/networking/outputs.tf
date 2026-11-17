@@ -82,12 +82,6 @@ output "available_zones" {
   value       = data.google_compute_zones.available.names
 }
 
-# Proxy-only subnet for internal load balancers
-output "proxy_subnet_id" {
-  description = "ID of the proxy-only subnet for internal load balancers"
-  value       = module.vpc.subnets_proxy_only != null ? try(values(module.vpc.subnets_proxy_only)[0].id, null) : null
-}
-
 output "proxy_subnet_name" {
   description = "Name of the proxy-only subnet"
   value       = "${var.name_prefix}-proxy-subnet"

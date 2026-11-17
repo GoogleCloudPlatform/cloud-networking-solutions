@@ -155,6 +155,7 @@ uv sync
 uv run python deploy_agent.py \
   --project="${PROJECT_ID}" \
   --region="${REGION}" \
+  --model-endpoint-location="${REGION}" \
   --mcp-url="$(cd ../../terraform && terraform output -raw bug_tickets_mcp_url)" \
   --build-only
 ```
@@ -193,6 +194,28 @@ terraform output nat_static_ip
 ```
 
 ### 2. Send a test query to the agent
+
+#### Option A: Direct REST API via `curl`
+
+Call the Vertex AI Reasoning Engine `:streamQuery` endpoint directly:
+
+```bash
+curl -s -X POST \
+  -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+  -H "Content-Type: application/json" \
+  "https://${REGION}-aiplatform.googleapis.com/v1beta1/projects/${PROJECT_ID}/locations/${REGION}/reasoningEngines/$(terraform output -raw reasoning_engine_name):streamQuery" \
+  -d '{
+    "class_method": "stream_query",
+    "input": {
+      "message": "List all open P1 bugs assigned to alice@quantumroast.example.",
+      "user_id": "test-user"
+    }
+  }'
+```
+
+The response will stream JSON chunks showing tool calls to `list_tickets` and the final answer retrieved from the MCP server.
+
+#### Option B: Google Cloud Console UI
 
 Go to **Agent Platform > Depolyments** in the GCP Console, select the deployed
 Reasoning Engine, and click **Playground**. Send a prompt like:
