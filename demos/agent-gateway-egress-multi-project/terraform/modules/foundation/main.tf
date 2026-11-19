@@ -314,9 +314,14 @@ resource "google_project_iam_member" "host_runtime_aiplatform_re_network_user" {
 
 # Custom role following Google Cloud enterprise least-privilege architecture
 # Grants networkservices.agentGateways.get, networkservices.agentGateways.use, and networkservices.operations.get
+# Suffix avoids GCP IAM's 37-day (7d soft-delete + 30d purge) role_id lock after destroy/re-apply cycles
+resource "random_id" "agw_cross_project_sa_suffix" {
+  byte_length = 3
+}
+
 resource "google_project_iam_custom_role" "agw_cross_project_sa" {
   project     = module.governance_project.project_id
-  role_id     = "ar_agw_cross_project_sa"
+  role_id     = "ar_agw_cross_project_sa_${random_id.agw_cross_project_sa_suffix.hex}"
   title       = "Runtime Agent Gateway Cross-Project SA"
   description = "Authorizes cross-project Spoke Vertex AI Service Agents to discover and bind to Central Agent Gateway"
   permissions = [
