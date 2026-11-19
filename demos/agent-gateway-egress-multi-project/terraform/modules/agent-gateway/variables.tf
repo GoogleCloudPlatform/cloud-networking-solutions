@@ -27,6 +27,12 @@ variable "project_number" {
   type        = string
 }
 
+variable "networking_project_id" {
+  description = "GCP project ID owning the VPC network (Shared VPC Host project). Defaults to project_id for single-project deployments."
+  type        = string
+  default     = null
+}
+
 variable "region" {
   description = "Region for the Agent Gateway and PSC-I network attachment"
   type        = string

@@ -58,8 +58,10 @@ resource "google_compute_network_attachment" "agent_gateway_na" {
 
 # Allow the gateway tenant's PSC-I NIC (sourcing from the dedicated subnet) to
 # reach the MCP internal LB on its front-end port.
+# In Shared VPC deployments, firewall rules must be created in the Host project
+# that owns var.network_self_link.
 resource "google_compute_firewall" "agent_gateway_psc_i" {
-  project       = var.project_id
+  project       = coalesce(var.networking_project_id, var.project_id)
   name          = "${var.name_prefix}-allow-psc-i"
   network       = var.network_self_link
   direction     = "INGRESS"

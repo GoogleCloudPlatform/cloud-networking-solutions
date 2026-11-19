@@ -220,9 +220,10 @@ module "agent_gateway" {
     google-beta = google-beta
   }
 
-  project_id     = var.governance_project_id
-  project_number = module.foundation.governance_project_number
-  region         = var.region
+  project_id            = var.governance_project_id
+  project_number        = module.foundation.governance_project_number
+  networking_project_id = var.networking_project_id
+  region                = var.region
 
   name_prefix = var.name_prefix
   name                           = var.agent_gateway_name
