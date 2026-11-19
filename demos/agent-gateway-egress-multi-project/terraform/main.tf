@@ -276,7 +276,7 @@ module "agent_registry_endpoints" {
   mcp_url_mode            = "cloud_run"
   mcp_service_urls        = module.mcp_services.service_urls
 
-  iap_egressor_members = ["principalSet://agents.global.org-${var.organization_id}.system.id.goog/attribute.platformContainer/aiplatform/projects/${module.foundation.governance_project_number}"]
+  iap_egressor_members = ["principalSet://agents.global.org-${var.organization_id}.system.id.goog/attribute.platformContainer/aiplatform/projects/${module.foundation.runtime_project_number}"]
   mcp_egressor_members = []
 
   depends_on = [module.foundation, module.mcp_services]
