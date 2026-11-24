@@ -13,8 +13,7 @@ baked into the agent.
 ## Repository layout
 
 ```
-agent-gateway-egress-cloud-nat/
-├── config/
+agent-gateway-egress-multi-project/
 ├── src/
 │   ├── bug-tickets-mcp/
 │   └── software-bug-agent/
@@ -39,14 +38,14 @@ agent-gateway-egress-cloud-nat/
   `roles/iam.securityAdmin` + `roles/resourcemanager.projectIamAdmin` + `roles/cloudbuild.builds.editor` + `roles/serviceusage.serviceUsageConsumer`) permissions on all three projects.
   - *Note on Cloud Build:* `roles/editor` does not grant permissions to create Cloud Build jobs. If you are not a Project Owner, run:
     ```bash
-    export PROJECT_ID=YOUR_GOVERNANCE_PROJECT_ID
+    export GOV_PROJECT_ID=YOUR_GOVERNANCE_PROJECT_ID
     export USER_EMAIL=$(gcloud config get-value account)
 
-    gcloud projects add-iam-policy-binding "$PROJECT_ID" \
+    gcloud projects add-iam-policy-binding "$GOV_PROJECT_ID" \
       --member="user:$USER_EMAIL" \
       --role="roles/cloudbuild.builds.editor"
 
-    gcloud projects add-iam-policy-binding "$PROJECT_ID" \
+    gcloud projects add-iam-policy-binding "$GOV_PROJECT_ID" \
       --member="user:$USER_EMAIL" \
       --role="roles/serviceusage.serviceUsageConsumer"
     ```
@@ -78,28 +77,16 @@ cd cloud-networking-solutions/demos/agent-gateway-egress-swp/terraform
 In a new project, enable the foundational APIs required by Terraform and Cloud Storage:
 
 ```bash
-export PROJECT_ID=$(gcloud config get-value project)
+export GOV_PROJECT_ID=YOUR_GOVERNANCE_PROJECT_ID
+export NET_PROJECT_ID=YOUR_NETWORK_PROJECT_ID
+export RUNTIME_PROJECT_ID=YOUR_RUNTIME_PROJECT_ID
 export REGION=us-central1
-
-gcloud services enable \
-  cloudresourcemanager.googleapis.com \
-  serviceusage.googleapis.com \
-  storage.googleapis.com \
-  compute.googleapis.com \
-  iam.googleapis.com \
-  iap.googleapis.com \
-  dns.googleapis.com \
-  agentregistry.googleapis.com \
-  networkservices.googleapis.com \
-  networksecurity.googleapis.com \
-  networkconnectivity.googleapis.com \
-  --project="${PROJECT_ID}"
 ```
 
 ### Step 2 — Create the Terraform state bucket
 
 ```bash
-gcloud storage buckets create "gs://${PROJECT_ID}-tfstate" \
+gcloud storage buckets create "gs://${GOV_PROJECT_ID}-tfstate" \
   --location="${REGION}" \
   --uniform-bucket-level-access
 ```
@@ -108,11 +95,13 @@ gcloud storage buckets create "gs://${PROJECT_ID}-tfstate" \
 
 ```bash
 cp example.backend.conf backend.conf
-# Edit backend.conf: set bucket = "${PROJECT_ID}-tfstate"
+# Edit backend.conf: set bucket = "${GOV_PROJECT_ID}-tfstate"
 
 cp example.tfvars terraform.tfvars
 # Edit terraform.tfvars:
-#   project_id      = "YOUR_PROJECT_ID"
+#   governance_project_id = "YOUR_GOVERNANCE_PROJECT_ID"
+#   networking_project_id = "YOUR_NETWORK_PROJECT_ID"
+#   runtime_project_id    = "YOUR_RUNTIME_PROJECT_ID"
 #   organization_id = "YOUR_ORG_NUMERIC_ID"   # gcloud organizations list
 #   region          = "us-central1"
 #   platform_admin_members = ["user:YOUR_EMAIL@example.com"]
@@ -155,8 +144,9 @@ uv sync
 
 # Stage agent artifacts to GCS and write build/agent_artifacts.json
 uv run python deploy_agent.py \
-  --project="${PROJECT_ID}" \
+  --project="${RUNTIME_PROJECT_ID}" \
   --region="${REGION}" \
+  --model="gemini-2.5-flash" \
   --mcp-url="$(cd ../../terraform && terraform output -raw bug_tickets_mcp_url)" \
   --build-only
 ```
@@ -204,7 +194,7 @@ Call the Vertex AI Reasoning Engine `:streamQuery` endpoint directly:
 curl -s -X POST \
   -H "Authorization: Bearer $(gcloud auth print-access-token)" \
   -H "Content-Type: application/json" \
-  "https://${REGION}-aiplatform.googleapis.com/v1beta1/projects/${PROJECT_ID}/locations/${REGION}/reasoningEngines/$(terraform output -raw reasoning_engine_name):streamQuery" \
+  "https://${REGION}-aiplatform.googleapis.com/v1beta1/projects/${RUNTIME_PROJECT_ID}/locations/${REGION}/reasoningEngines/$(terraform output -raw reasoning_engine_name):streamQuery" \
   -d '{
     "class_method": "stream_query",
     "input": {
@@ -236,7 +226,7 @@ The bug-tickets-mcp Cloud Run service logs every request. Check for calls to `/m
 ```bash
 gcloud logging read \
   'resource.type="cloud_run_revision" AND resource.labels.service_name="bug-tickets-mcp" AND textPayload:"/mcp"' \
-  --project="${PROJECT_ID}" \
+  --project=$(terraform output -raw networking_project_id) \
   --limit=10 \
   --format="value(textPayload)"
 ```
@@ -252,7 +242,7 @@ cd terraform
 terraform destroy -var deploy_reasoning_engine=true
 
 # 2. (Optional) Delete the state bucket
-gcloud storage rm -r "gs://${PROJECT_ID}-tfstate"
+gcloud storage rm -r "gs://${GOV_PROJECT_ID}-tfstate"
 ```
 
 ## License
